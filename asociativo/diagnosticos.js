@@ -5,7 +5,7 @@
 // Colección: Diagnosticos
 // ============================================================
 
-let DIAG_FILTROS = { prov: [], cat: [], orden: ['cat'] };
+let DIAG_FILTROS = { prov: [], cat: [] };
 let DIAGNOSTICOS_DATA = [];
 
 const CATEGORIAS_DIAG = ['Líderes de ReCircula', 'En Fortalecimiento', 'En Acompañamiento'];
@@ -58,21 +58,17 @@ function registerDiagnosticosFilters() {
     sections: [
       { key: 'prov', title: 'Provincia', type: 'options', options: _provinciasDiag() },
       { key: 'cat',  title: 'Categoría', type: 'options', options: CATEGORIAS_DIAG },
-      { key: 'orden', title: 'Ordenar por valoración', type: 'radio', noBadge: true, def: 'cat',
-        options: [
-          { val: 'cat',  lbl: 'Por categoría (predeterminado)' },
-          { val: 'desc', lbl: 'Mayor valoración a menor' },
-          { val: 'asc',  lbl: 'Menor valoración a mayor' },
-        ] },
     ],
     getValue: function (k) { return DIAG_FILTROS[k] || []; },
     setValue: function (k, v) { DIAG_FILTROS[k] = v; },
-    apply: function () { cargarDiagnosticos(); },
+    apply: function () { renderVistaDiagnosticos(); },
   });
 }
 
+// Provincias disponibles (desde la lista maestra de asociaciones)
 function _provinciasDiag() {
-  return Array.from(new Set(CAT.diagnosticos.map(function (d) { return d.provincia; }).filter(Boolean))).sort();
+  return Array.from(new Set((CAT.asocAmbiente || []).map(function (a) { return a.provincia; }).filter(Boolean)))
+    .sort(function (a, b) { return a.localeCompare(b, 'es'); });
 }
 
 function renderDiagnosticos() {
@@ -87,54 +83,177 @@ function renderVistaDiagnosticos() {
   else renderNivelAsociacionesDiag();
 }
 
-// ── Nivel 1: asociaciones agrupadas por provincia (idéntico a Asociaciones) ──
+// ── Nivel 1: Desempeño asociativo (asociaciones ordenadas por categoría) ──
+
+// Componentes (módulos) del diagnóstico, en el orden de la ficha.
+const DIAG_MODULOS = [
+  { key: 'p_organizacional', lbl: 'Organizacional', abbr: 'Organiz.' },
+  { key: 'p_productivo',     lbl: 'Productivo',     abbr: 'Product.' },
+  { key: 'p_empresarial',    lbl: 'Empresarial',    abbr: 'Empres.' },
+  { key: 'p_ambiental',      lbl: 'Ambiental',      abbr: 'Ambien.' },
+  { key: 'p_financiero',     lbl: 'Financiero',     abbr: 'Financ.' },
+];
+
+// Diagnóstico vigente de una asociación (mayor año; a igual año, Cierre gana).
+function _diagVigenteDe(idAsoc) {
+  const ds = (CAT.diagnosticos || []).filter(function (d) { return d.id_asociacion === idAsoc; });
+  if (!ds.length) return null;
+  ds.sort(function (a, b) {
+    const ay = parseFloat(a.anio) || 0, by = parseFloat(b.anio) || 0;
+    if (by !== ay) return by - ay;
+    return (b.tipo === 'Cierre' ? 1 : 0) - (a.tipo === 'Cierre' ? 1 : 0);
+  });
+  return ds[0];
+}
+
 function renderNivelAsociacionesDiag() {
   const add = puedeEditar();
   document.getElementById('main-content').innerHTML =
     '<div class="page-header">' +
-      '<div><div class="page-title">Diagnósticos</div><div class="page-sub">Elegí una asociación</div></div>' +
+      '<div><div class="page-title">Diagnósticos</div><div class="page-sub">Desempeño asociativo</div></div>' +
       '<div class="hdr-actions">' +
+        '<button class="hdr-circle" onclick="openFilterDrawer(\'diagnosticos\', this)" title="Filtros">' +
+          icoHTML('filter') + '<span class="filter-badge" id="diag-filter-badge" style="display:none">0</span></button>' +
         '<button class="hdr-circle" onclick="exportarDiagnosticosExcel()" title="Descargar Excel">' + icoHTML('download') + '</button>' +
         (add ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormDiagnostico()" title="Nuevo diagnóstico">' + icoHTML('plus') + '</button>' : '') +
       '</div>' +
     '</div>' +
     '<div id="diag-n1-wrap"></div>';
+  updateFilterBadge('diagnosticos');
+  renderDesempenoAsociativo();
+}
 
+// Construye el cuadro de desempeño: asociaciones agrupadas por categoría vigente.
+function renderDesempenoAsociativo() {
   const wrap = document.getElementById('diag-n1-wrap');
-  const grupos = {};
-  (CAT.asocAmbiente || []).forEach(function (a) {
-    const p = a.provincia || 'Sin provincia';
-    (grupos[p] = grupos[p] || []).push(a);
+  if (!wrap) return;
+
+  const fProv = DIAG_FILTROS.prov || [];
+  const fCat  = DIAG_FILTROS.cat  || [];
+
+  // Una fila por asociación, con su diagnóstico vigente resuelto.
+  const filas = (CAT.asocAmbiente || [])
+    .filter(function (a) { return pasaFiltro(fProv, a.provincia); })
+    .map(function (a) {
+      const d = _diagVigenteDe(a.id_asociacion);
+      const total = d ? parseFloat(d.valoracion_total) : null;
+      return {
+        id:        a.id_asociacion,
+        nombre:    a.nombre || '—',
+        provincia: a.provincia || '',
+        diag:      d,
+        total:     (total == null || isNaN(total)) ? null : total,
+        cat:       d ? categoriaDesdePuntaje(total) : '',
+      };
+    });
+
+  // Agrupar por categoría (+ "Sin diagnóstico" al final) y ordenar por desempeño.
+  const GRUPOS = CATEGORIAS_DIAG.concat(['Sin diagnóstico']);
+  const porCat = {};
+  GRUPOS.forEach(function (g) { porCat[g] = []; });
+  filas.forEach(function (f) { porCat[f.cat || 'Sin diagnóstico'].push(f); });
+  GRUPOS.forEach(function (g) {
+    porCat[g].sort(function (x, y) {
+      const tx = x.total == null ? -1 : x.total, ty = y.total == null ? -1 : y.total;
+      if (ty !== tx) return ty - tx;
+      return x.nombre.localeCompare(y.nombre, 'es');
+    });
   });
-  const provs = Object.keys(grupos).sort(function (a, b) { return a.localeCompare(b, 'es'); });
-  if (!provs.length) {
-    wrap.innerHTML = '<div class="empty-state">' + icoHTML('users').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') + '<p>No hay asociaciones</p></div>';
+
+  // Grupos visibles: respeta el filtro de categoría; "Sin diagnóstico" solo sin ese filtro.
+  const catActivo = fCat.length > 0;
+  const gruposVis = GRUPOS.filter(function (g) {
+    if (!porCat[g].length) return false;
+    if (g === 'Sin diagnóstico') return !catActivo;
+    return !catActivo || fCat.includes(g);
+  });
+
+  if (!gruposVis.length) {
+    wrap.innerHTML = '<div class="empty-state">' +
+      icoHTML('clipboard').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') +
+      '<p>No hay asociaciones con estos filtros</p></div>';
     return;
   }
-  const CHEV = icoHTML('chevRight');
-  wrap.innerHTML = '<div class="asoc-provs">' + provs.map(function (prov) {
-    const col = _provColorAsoc(prov);
-    const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
-    const filas = lista.map(function (a) {
-      const n = _diagCount(a.id_asociacion);
-      const pill = n > 0
-        ? '<span class="asoc-row-pill" style="background:' + _asocRgba(col, 0.14) + ';color:' + col + '">' + n + ' diagnóstico' + (n !== 1 ? 's' : '') + '</span>'
-        : '<span class="asoc-row-pill asoc-row-pill-0">Sin diagnósticos</span>';
-      return '<div class="asoc-row" onclick="abrirAsociacionDiag(\'' + jsEsc(a.id_asociacion) + '\')">' +
-        '<span class="asoc-row-ico" style="background:' + _asocRgba(col, 0.12) + ';color:' + col + '">' + icoHTML('users') + '</span>' +
-        '<span class="asoc-row-nom">' + esc(a.nombre || '—') + '</span>' +
-        '<span class="asoc-row-right">' + pill + '<span class="asoc-row-chev">' + CHEV + '</span></span>' +
-      '</div>';
-    }).join('');
-    return '<div class="asoc-prov-grupo">' +
-      '<div class="asoc-prov-cab">' +
-        '<span class="asoc-prov-ico" style="background:' + _asocRgba(col, 0.14) + ';color:' + col + '">' + icoHTML('mapPin') + '</span>' +
-        '<span class="asoc-prov-nom">' + esc(prov) + '</span>' +
-        '<span class="asoc-prov-count">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
+
+  // Resumen del encabezado (solo asociaciones diagnosticadas).
+  const diagn = filas.filter(function (f) { return f.diag; });
+  const prom = diagn.length ? diagn.reduce(function (s, f) { return s + f.total; }, 0) / diagn.length : null;
+  const sub = diagn.length
+    ? (diagn.length + ' de ' + filas.length + ' diagnosticadas · promedio ' + fmtNum(prom, 1) + '%')
+    : 'Aún sin diagnósticos registrados';
+
+  const listado = '<div class="diag-lwrap">' +
+    gruposVis.map(function (g) { return _desempGrupoLista(g, porCat[g]); }).join('') +
+  '</div>';
+
+  wrap.innerHTML =
+    '<div class="card diag-desemp-card">' +
+      '<div class="card-title diag-desemp-head">' +
+        '<span class="diag-desemp-title">' + icoHTML('trophy') + ' Desempeño asociativo</span>' +
+        '<span class="diag-desemp-sub">' + esc(sub) + '</span>' +
       '</div>' +
-      '<div class="asoc-prov-lista">' + filas + '</div>' +
+      listado +
     '</div>';
-  }).join('') + '</div>';
+}
+
+// Color y promedio de un grupo (categoría).
+function _desempGrupoMeta(cat, lista) {
+  const conDiag = cat !== 'Sin diagnóstico';
+  const col = conDiag ? _asocColorCat(cat) : '#9aa2b1';
+  const vals = lista.filter(function (f) { return f.total != null; }).map(function (f) { return f.total; });
+  const prom = vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) / vals.length : null;
+  return { conDiag: conDiag, col: col, prom: prom };
+}
+
+// Bloque "promedio general": número grande en el color de la categoría.
+function _desempGen(v, col) {
+  const n = parseFloat(v);
+  return '<span class="diag-lgen">' +
+    '<b style="color:' + col + '">' + (isNaN(n) ? '—' : fmtNum(n, 1) + '%') + '</b>' +
+    '<small>Prom. general</small></span>';
+}
+
+// Una fila (asociación) del listado: cabecera + medidores por componente.
+// Todo apila en vertical, así nunca hay scroll horizontal y se adapta al ancho.
+function _desempFila(f, m) {
+  const gen = f.diag
+    ? _desempGen(f.total, m.col)
+    : '<span class="diag-lsin">Sin diagnóstico</span>';
+
+  const top = '<div class="diag-lrow-top">' +
+    '<span class="diag-lava" style="background:' + _asocRgba(m.col, 0.13) + ';color:' + m.col + '">' + esc(_inicialesAsoc(f.nombre)) + '</span>' +
+    '<span class="diag-lname"><b>' + esc(f.nombre) + '</b>' + (f.provincia ? '<small>' + esc(f.provincia) + '</small>' : '') + '</span>' +
+    gen +
+    '<span class="diag-lgo" title="Ir al registro">' + icoHTML('chevRight') + '</span>' +
+  '</div>';
+
+  // Componentes: medidores a lo ancho, en una grilla que se reacomoda sola.
+  const comps = f.diag
+    ? '<div class="diag-lcomps">' + DIAG_MODULOS.map(function (mm) {
+        const n = parseFloat(f.diag[mm.key]);
+        const w = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
+        return '<span class="diag-lcomp">' +
+          '<span class="diag-lcomp-lbl">' + esc(mm.abbr) + '<u>' + (isNaN(n) ? '—' : Math.round(n)) + '</u></span>' +
+          '<span class="diag-lcomp-bar"><i style="width:' + w + '%;background:' + _asocRgba(m.col, 0.55) + '"></i></span>' +
+        '</span>';
+      }).join('') + '</div>'
+    : '';
+
+  return '<div class="diag-lrow" onclick="abrirAsociacionDiag(\'' + jsEsc(f.id) + '\')">' + top + comps + '</div>';
+}
+
+// Un grupo (categoría) del listado: cabecera + filas.
+function _desempGrupoLista(cat, lista) {
+  const m = _desempGrupoMeta(cat, lista);
+  const head = '<div class="diag-lgrp-head">' +
+    '<span class="diag-grp-dot" style="background:' + m.col + '"></span>' +
+    '<span class="diag-grp-name" style="color:' + m.col + '">' + esc(cat) + '</span>' +
+    '<span class="diag-grp-count">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
+    (m.prom != null ? '<span class="diag-grp-prom">prom. ' + fmtNum(m.prom, 1) + '%</span>' : '') +
+  '</div>';
+  return '<div class="diag-lgrp">' + head +
+    lista.map(function (f) { return _desempFila(f, m); }).join('') +
+  '</div>';
 }
 
 function abrirAsociacionDiag(idAsoc) { DIAG_ASOC_SEL = idAsoc; DIAG_VISTA = 'lista'; renderVistaDiagnosticos(); }
@@ -645,6 +764,62 @@ async function exportarDiagnosticosExcel() {
     @media (max-width:768px) {
       .diag-tabla-desktop { display:none; }
       .diag-cards-mobile { display:flex; }
+    }
+
+    /* ── Nivel 1: Desempeño asociativo (modelo Lista, responsive) ── */
+    .diag-desemp-card { padding:0; overflow:hidden; }
+    .diag-desemp-head { padding:20px 22px; margin-bottom:0; border-bottom:1px solid var(--border); flex-wrap:wrap; row-gap:4px; }
+    .diag-desemp-title { display:inline-flex; align-items:center; gap:9px; font-size:16px; font-weight:800; color:var(--text); }
+    .diag-desemp-title svg { width:19px; height:19px; color:#F5AD21; }
+    .diag-desemp-sub { font-size:12px; font-weight:600; color:var(--text-dim); }
+
+    .diag-lwrap { display:flex; flex-direction:column; }
+
+    /* Cabecera de grupo (categoría) */
+    .diag-lgrp:not(:first-child) .diag-lgrp-head { border-top:1px solid var(--border); }
+    .diag-lgrp-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; padding:11px 22px; background:var(--surface-hover); border-bottom:1px solid var(--border); }
+    .diag-grp-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .diag-grp-name { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
+    .diag-grp-count { font-size:11px; font-weight:600; color:var(--text-dim); }
+    .diag-grp-prom { margin-left:auto; font-size:11.5px; font-weight:700; color:var(--text-muted); background:#fff; border:1px solid var(--border); padding:3px 11px; border-radius:20px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+
+    /* Fila (asociación) — todo apila en vertical */
+    .diag-lrow { padding:14px 22px; cursor:pointer; transition:background .13s; }
+    .diag-lrow + .diag-lrow { border-top:1px solid #eef1f7; }
+    .diag-lrow:hover { background:#fafbfd; }
+
+    .diag-lrow-top { display:flex; align-items:center; gap:12px; }
+    .diag-lava { width:36px; height:36px; border-radius:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; letter-spacing:.3px; }
+    .diag-lname { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+    .diag-lname b { font-size:14px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .diag-lname small { font-size:11.5px; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .diag-lgen { flex-shrink:0; text-align:right; line-height:1.05; }
+    .diag-lgen b { font-size:19px; font-weight:800; font-variant-numeric:tabular-nums; }
+    .diag-lgen small { display:block; font-size:9.5px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
+    .diag-lsin { flex-shrink:0; font-size:11.5px; font-weight:700; color:var(--text-dim); background:var(--surface-hover); border:1px solid var(--border); padding:5px 11px; border-radius:20px; white-space:nowrap; }
+    .diag-lgo { flex-shrink:0; width:30px; height:30px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; color:var(--text-dim); background:#eef1f6; transition:background .14s,color .14s; }
+    .diag-lrow:hover .diag-lgo { background:#506CFF; color:#fff; }
+    .diag-lgo svg { width:16px; height:16px; }
+
+    /* Componentes: medidores en grilla que se reacomoda sola (nunca desborda) */
+    .diag-lcomps { display:grid; grid-template-columns:repeat(auto-fit, minmax(94px, 1fr)); gap:9px 16px; margin:12px 0 2px; padding-left:48px; }
+    .diag-lcomp { min-width:0; }
+    .diag-lcomp-lbl { display:flex; align-items:baseline; justify-content:space-between; gap:6px; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:5px; }
+    .diag-lcomp-lbl u { text-decoration:none; font-size:12.5px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+    .diag-lcomp-bar { display:block; height:6px; background:#eef0f4; border-radius:20px; overflow:hidden; }
+    .diag-lcomp-bar i { display:block; height:100%; border-radius:20px; transition:width .5s ease; }
+
+    @media (max-width:560px) {
+      .diag-desemp-head { padding:16px; }
+      .diag-lgrp-head { padding:11px 16px; }
+      .diag-lrow { padding:13px 16px; }
+      .diag-lcomps { padding-left:0; gap:9px 12px; }
+      .diag-lgen b { font-size:17px; }
+    }
+    /* Muy angosto (≈320px): la grilla auto-fit ya cae a 2 columnas sola;
+       solo achicamos el rótulo del promedio para que el nombre respire. */
+    @media (max-width:340px) {
+      .diag-lgen small { display:none; }
     }
   `;
   document.head.appendChild(s);
