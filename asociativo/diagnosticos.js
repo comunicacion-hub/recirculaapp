@@ -110,7 +110,7 @@ function renderNivelAsociacionesDiag() {
   const add = puedeEditar();
   document.getElementById('main-content').innerHTML =
     '<div class="page-header">' +
-      '<div><div class="page-title">Diagnósticos</div><div class="page-sub">Desempeño asociativo</div></div>' +
+      '<div><div class="page-title">Diagnósticos</div></div>' +
       '<div class="hdr-actions">' +
         '<button class="hdr-circle" onclick="openFilterDrawer(\'diagnosticos\', this)" title="Filtros">' +
           icoHTML('filter') + '<span class="filter-badge" id="diag-filter-badge" style="display:none">0</span></button>' +
@@ -175,25 +175,11 @@ function renderDesempenoAsociativo() {
     return;
   }
 
-  // Resumen del encabezado (solo asociaciones diagnosticadas).
-  const diagn = filas.filter(function (f) { return f.diag; });
-  const prom = diagn.length ? diagn.reduce(function (s, f) { return s + f.total; }, 0) / diagn.length : null;
-  const sub = diagn.length
-    ? (diagn.length + ' de ' + filas.length + ' diagnosticadas · promedio ' + fmtNum(prom, 1) + '%')
-    : 'Aún sin diagnósticos registrados';
-
-  const listado = '<div class="diag-lwrap">' +
-    gruposVis.map(function (g) { return _desempGrupoLista(g, porCat[g]); }).join('') +
+  // Secciones separadas por categoría (cada una por su cuenta, sin una caja
+  // única que las contenga a todas).
+  wrap.innerHTML = '<div class="diag-cats">' +
+    gruposVis.map(function (g) { return _desempSeccion(g, porCat[g]); }).join('') +
   '</div>';
-
-  wrap.innerHTML =
-    '<div class="card diag-desemp-card">' +
-      '<div class="card-title diag-desemp-head">' +
-        '<span class="diag-desemp-title">' + icoHTML('trophy') + ' Desempeño asociativo</span>' +
-        '<span class="diag-desemp-sub">' + esc(sub) + '</span>' +
-      '</div>' +
-      listado +
-    '</div>';
 }
 
 // Color y promedio de un grupo (categoría).
@@ -205,56 +191,62 @@ function _desempGrupoMeta(cat, lista) {
   return { conDiag: conDiag, col: col, prom: prom };
 }
 
-// Bloque "promedio general": número grande en el color de la categoría.
+// Cuerpo desplegable: promedio general (número grande) + barra.
 function _desempGen(v, col) {
   const n = parseFloat(v);
-  return '<span class="diag-lgen">' +
-    '<b style="color:' + col + '">' + (isNaN(n) ? '—' : fmtNum(n, 1) + '%') + '</b>' +
-    '<small>Prom. general</small></span>';
+  const w = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
+  return '<div class="diag-sgen">' +
+      '<span class="diag-sgen-lbl">Promedio general</span>' +
+      '<span class="diag-sgen-val" style="color:' + col + '">' + (isNaN(n) ? '—' : fmtNum(n, 1) + '%') + '</span>' +
+    '</div>' +
+    '<div class="diag-sgen-bar"><i style="width:' + w + '%;background:' + col + '"></i></div>';
 }
 
-// Una fila (asociación) del listado: cabecera + medidores por componente.
-// Todo apila en vertical, así nunca hay scroll horizontal y se adapta al ancho.
-function _desempFila(f, m) {
-  const gen = f.diag
-    ? _desempGen(f.total, m.col)
-    : '<span class="diag-lsin">Sin diagnóstico</span>';
+// Cuerpo desplegable: promedio por componente (una fila por módulo).
+function _desempComps(f, m) {
+  return '<div class="diag-scomps">' + DIAG_MODULOS.map(function (mm) {
+    const n = parseFloat(f.diag[mm.key]);
+    const w = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
+    return '<div class="diag-scomp">' +
+      '<span class="diag-scomp-lbl">' + esc(mm.lbl) + '</span>' +
+      '<span class="diag-scomp-bar"><i style="width:' + w + '%;background:' + _asocRgba(m.col, 0.6) + '"></i></span>' +
+      '<span class="diag-scomp-val">' + (isNaN(n) ? '—' : Math.round(n)) + '</span>' +
+    '</div>';
+  }).join('') + '</div>';
+}
 
-  const top = '<div class="diag-lrow-top">' +
-    '<span class="diag-lava" style="background:' + _asocRgba(m.col, 0.13) + ';color:' + m.col + '">' + esc(_inicialesAsoc(f.nombre)) + '</span>' +
-    '<span class="diag-lname"><b>' + esc(f.nombre) + '</b>' + (f.provincia ? '<small>' + esc(f.provincia) + '</small>' : '') + '</span>' +
-    gen +
-    '<span class="diag-lgo" title="Ir al registro">' + icoHTML('chevRight') + '</span>' +
+// Franja por asociación: cerrada = tira delgada (nombre + desplegar + flecha);
+// al desplegar aparece el promedio general y por componente.
+function _desempStrip(f, m) {
+  const body = f.diag
+    ? (_desempGen(f.total, m.col) + _desempComps(f, m))
+    : '<div class="diag-ssin">Sin diagnóstico registrado</div>';
+  return '<div class="diag-strip">' +
+    '<div class="diag-shead" onclick="toggleDiagStrip(this)">' +
+      '<span class="diag-sacc" style="background:' + m.col + '"></span>' +
+      '<span class="diag-sname"><b>' + esc(f.nombre) + '</b>' + (f.provincia ? '<small>' + esc(f.provincia) + '</small>' : '') + '</span>' +
+      '<span class="diag-stog" title="Desplegar desempeño">' + icoHTML('chevDown') + '</span>' +
+      '<button class="diag-sarr" title="Ir al registro" onclick="event.stopPropagation();abrirAsociacionDiag(\'' + jsEsc(f.id) + '\')">' + icoHTML('chevRight') + '</button>' +
+    '</div>' +
+    '<div class="diag-sbody">' + body + '</div>' +
   '</div>';
-
-  // Componentes: medidores a lo ancho, en una grilla que se reacomoda sola.
-  const comps = f.diag
-    ? '<div class="diag-lcomps">' + DIAG_MODULOS.map(function (mm) {
-        const n = parseFloat(f.diag[mm.key]);
-        const w = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
-        return '<span class="diag-lcomp">' +
-          '<span class="diag-lcomp-lbl">' + esc(mm.abbr) + '<u>' + (isNaN(n) ? '—' : Math.round(n)) + '</u></span>' +
-          '<span class="diag-lcomp-bar"><i style="width:' + w + '%;background:' + _asocRgba(m.col, 0.55) + '"></i></span>' +
-        '</span>';
-      }).join('') + '</div>'
-    : '';
-
-  return '<div class="diag-lrow" onclick="abrirAsociacionDiag(\'' + jsEsc(f.id) + '\')">' + top + comps + '</div>';
 }
 
-// Un grupo (categoría) del listado: cabecera + filas.
-function _desempGrupoLista(cat, lista) {
+// Sección de una categoría: cabecera + franjas (separada de las demás).
+function _desempSeccion(cat, lista) {
   const m = _desempGrupoMeta(cat, lista);
-  const head = '<div class="diag-lgrp-head">' +
+  const head = '<div class="diag-cat-head">' +
     '<span class="diag-grp-dot" style="background:' + m.col + '"></span>' +
     '<span class="diag-grp-name" style="color:' + m.col + '">' + esc(cat) + '</span>' +
-    '<span class="diag-grp-count">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
     (m.prom != null ? '<span class="diag-grp-prom">prom. ' + fmtNum(m.prom, 1) + '%</span>' : '') +
   '</div>';
-  return '<div class="diag-lgrp">' + head +
-    lista.map(function (f) { return _desempFila(f, m); }).join('') +
+  return '<div class="diag-cat">' + head +
+    '<div class="diag-strips">' + lista.map(function (f) { return _desempStrip(f, m); }).join('') + '</div>' +
   '</div>';
 }
+
+// Abrir/cerrar una franja.
+function toggleDiagStrip(el) { const s = el.closest('.diag-strip'); if (s) s.classList.toggle('open'); }
 
 function abrirAsociacionDiag(idAsoc) { DIAG_ASOC_SEL = idAsoc; DIAG_VISTA = 'lista'; renderVistaDiagnosticos(); }
 function volverAsociacionesDiag() { DIAG_VISTA = 'asociaciones'; DIAG_ASOC_SEL = null; renderVistaDiagnosticos(); }
@@ -766,60 +758,50 @@ async function exportarDiagnosticosExcel() {
       .diag-cards-mobile { display:flex; }
     }
 
-    /* ── Nivel 1: Desempeño asociativo (modelo Lista, responsive) ── */
-    .diag-desemp-card { padding:0; overflow:hidden; }
-    .diag-desemp-head { padding:20px 22px; margin-bottom:0; border-bottom:1px solid var(--border); flex-wrap:wrap; row-gap:4px; }
-    .diag-desemp-title { display:inline-flex; align-items:center; gap:9px; font-size:16px; font-weight:800; color:var(--text); }
-    .diag-desemp-title svg { width:19px; height:19px; color:#F5AD21; }
-    .diag-desemp-sub { font-size:12px; font-weight:600; color:var(--text-dim); }
-
-    .diag-lwrap { display:flex; flex-direction:column; }
-
-    /* Cabecera de grupo (categoría) */
-    .diag-lgrp:not(:first-child) .diag-lgrp-head { border-top:1px solid var(--border); }
-    .diag-lgrp-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; padding:11px 22px; background:var(--surface-hover); border-bottom:1px solid var(--border); }
+    /* ── Nivel 1: secciones por categoría + franjas desplegables ── */
+    .diag-cats { display:flex; flex-direction:column; gap:26px; }
+    .diag-cat-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; padding:0 4px 10px; }
     .diag-grp-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
-    .diag-grp-name { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
-    .diag-grp-count { font-size:11px; font-weight:600; color:var(--text-dim); }
-    .diag-grp-prom { margin-left:auto; font-size:11.5px; font-weight:700; color:var(--text-muted); background:#fff; border:1px solid var(--border); padding:3px 11px; border-radius:20px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .diag-grp-name { font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
+    .diag-grp-count { font-size:11.5px; font-weight:600; color:var(--text-dim); }
+    .diag-grp-prom { margin-left:auto; font-size:11.5px; font-weight:700; color:var(--text-muted); background:var(--surface); border:1px solid var(--border); padding:3px 11px; border-radius:20px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 
-    /* Fila (asociación) — todo apila en vertical */
-    .diag-lrow { padding:14px 22px; cursor:pointer; transition:background .13s; }
-    .diag-lrow + .diag-lrow { border-top:1px solid #eef1f7; }
-    .diag-lrow:hover { background:#fafbfd; }
+    .diag-strips { display:flex; flex-direction:column; gap:10px; }
 
-    .diag-lrow-top { display:flex; align-items:center; gap:12px; }
-    .diag-lava { width:36px; height:36px; border-radius:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; letter-spacing:.3px; }
-    .diag-lname { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
-    .diag-lname b { font-size:14px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .diag-lname small { font-size:11.5px; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .diag-lgen { flex-shrink:0; text-align:right; line-height:1.05; }
-    .diag-lgen b { font-size:19px; font-weight:800; font-variant-numeric:tabular-nums; }
-    .diag-lgen small { display:block; font-size:9.5px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
-    .diag-lsin { flex-shrink:0; font-size:11.5px; font-weight:700; color:var(--text-dim); background:var(--surface-hover); border:1px solid var(--border); padding:5px 11px; border-radius:20px; white-space:nowrap; }
-    .diag-lgo { flex-shrink:0; width:30px; height:30px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; color:var(--text-dim); background:#eef1f6; transition:background .14s,color .14s; }
-    .diag-lrow:hover .diag-lgo { background:#506CFF; color:#fff; }
-    .diag-lgo svg { width:16px; height:16px; }
+    /* Franja: cerrada = tira delgada; abierta = crece con el detalle */
+    .diag-strip { position:relative; background:var(--white); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.03); transition:box-shadow .15s; }
+    .diag-strip:hover, .diag-strip.open { box-shadow:0 6px 18px rgba(0,0,0,.07); }
+    .diag-sacc { position:absolute; left:0; top:0; bottom:0; width:4px; }
+    .diag-shead { display:flex; align-items:center; gap:12px; padding:13px 14px 13px 20px; cursor:pointer; }
+    .diag-sname { flex:1; min-width:0; }
+    .diag-sname b { display:block; font-size:14px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .diag-sname small { display:block; font-size:11.5px; color:var(--text-muted); margin-top:1px; }
+    .diag-stog { flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; color:var(--text-dim); }
+    .diag-stog svg { width:18px; height:18px; transition:transform .2s; }
+    .diag-strip.open .diag-stog svg { transform:rotate(180deg); }
+    .diag-sarr { flex-shrink:0; width:32px; height:32px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--surface); color:var(--text-muted); cursor:pointer; padding:0; transition:.14s; }
+    .diag-sarr svg { width:16px; height:16px; }
+    .diag-sarr:hover { background:#506CFF; border-color:#506CFF; color:#fff; }
 
-    /* Componentes: medidores en grilla que se reacomoda sola (nunca desborda) */
-    .diag-lcomps { display:grid; grid-template-columns:repeat(auto-fit, minmax(94px, 1fr)); gap:9px 16px; margin:12px 0 2px; padding-left:48px; }
-    .diag-lcomp { min-width:0; }
-    .diag-lcomp-lbl { display:flex; align-items:baseline; justify-content:space-between; gap:6px; font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:5px; }
-    .diag-lcomp-lbl u { text-decoration:none; font-size:12.5px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
-    .diag-lcomp-bar { display:block; height:6px; background:#eef0f4; border-radius:20px; overflow:hidden; }
-    .diag-lcomp-bar i { display:block; height:100%; border-radius:20px; transition:width .5s ease; }
+    .diag-sbody { display:none; border-top:1px solid var(--border); padding:16px 18px 18px; }
+    .diag-strip.open .diag-sbody { display:block; }
+    .diag-sgen { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+    .diag-sgen-lbl { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .diag-sgen-val { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; }
+    .diag-sgen-bar { height:6px; background:#eef0f4; border-radius:20px; overflow:hidden; margin:8px 0 16px; }
+    .diag-sgen-bar i { display:block; height:100%; border-radius:20px; }
+    .diag-scomps { display:flex; flex-direction:column; gap:10px; }
+    .diag-scomp { display:flex; align-items:center; gap:12px; }
+    .diag-scomp-lbl { font-size:12.5px; font-weight:600; color:var(--text-muted); width:116px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .diag-scomp-bar { flex:1; height:7px; background:#eef0f4; border-radius:20px; overflow:hidden; }
+    .diag-scomp-bar i { display:block; height:100%; border-radius:20px; transition:width .5s ease; }
+    .diag-scomp-val { font-size:13px; font-weight:800; width:30px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; color:var(--text); }
+    .diag-ssin { font-size:13px; font-weight:600; color:var(--text-dim); }
 
     @media (max-width:560px) {
-      .diag-desemp-head { padding:16px; }
-      .diag-lgrp-head { padding:11px 16px; }
-      .diag-lrow { padding:13px 16px; }
-      .diag-lcomps { padding-left:0; gap:9px 12px; }
-      .diag-lgen b { font-size:17px; }
-    }
-    /* Muy angosto (≈320px): la grilla auto-fit ya cae a 2 columnas sola;
-       solo achicamos el rótulo del promedio para que el nombre respire. */
-    @media (max-width:340px) {
-      .diag-lgen small { display:none; }
+      .diag-shead { padding:12px 12px 12px 18px; }
+      .diag-sbody { padding:14px 14px 16px; }
+      .diag-scomp-lbl { width:96px; font-size:12px; }
     }
   `;
   document.head.appendChild(s);
