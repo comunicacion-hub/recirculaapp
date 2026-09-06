@@ -125,25 +125,12 @@ function renderNivelAsociacionesEnc() {
         (add ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormEncuentro()" title="Nuevo encuentro">' + icoHTML('plus') + '</button>' : '') +
       '</div>' +
     '</div>' +
-    '<div id="enc-stats"></div>' +
     '<div id="enc-n1-wrap"></div>';
 
   // Datos para exportar "todo" desde este nivel
   ENCUENTROS_DATA = (CAT.encuentros || []).slice().sort(function (a, b) {
     return String(b.fecha_encuentro || '').localeCompare(String(a.fecha_encuentro || ''));
   });
-
-  // Estadísticas globales
-  const st = _encStats(CAT.encuentros || []);
-  const cont = document.getElementById('enc-stats');
-  if (cont) {
-    cont.innerHTML = '<div class="enc-stats-grid">' +
-      _encStatCard('calendar', '#506CFF', st.hoy, 'Hoy', 'encuentro' + (st.hoy !== 1 ? 's' : '')) +
-      _encStatCard('calendar', '#18AE97', st.sem, 'Esta semana', 'encuentro' + (st.sem !== 1 ? 's' : '')) +
-      _encStatCard('calendar', '#F5AD21', st.mes, 'Este mes', 'encuentro' + (st.mes !== 1 ? 's' : '')) +
-      _encStatCard('users', '#7B5CFF', fmtNum(st.asist), 'Total asistentes', 'personas') +
-    '</div>';
-  }
 
   // Navegación por provincia → asociación
   const wrap = document.getElementById('enc-n1-wrap');
