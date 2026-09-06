@@ -298,61 +298,64 @@ function renderTablaDiagnosticos() {
     return;
   }
   const edit = puedeEditar();
-  const pctTxt = function (v) { return (v == null || isNaN(parseFloat(v))) ? '—' : fmtNum(v, 1) + '%'; };
-  const cat = function (d) { return categoriaDesdePuntaje(parseFloat(d.valoracion_total)); };
+  wrap.innerHTML = '<div class="dg2-list">' +
+    DIAGNOSTICOS_DATA.map(function (d) { return _diagCardN2(d, edit); }).join('') +
+  '</div>' +
+    '<div class="dg2-count">' + DIAGNOSTICOS_DATA.length + ' diagnóstico' + (DIAGNOSTICOS_DATA.length !== 1 ? 's' : '') + '</div>';
+}
 
-  const acciones = function (d) {
-    const docId = jsEsc(d._docId || '');
-    return '<button class="icon-btn" onclick="event.stopPropagation();verDiagnostico(\'' + docId + '\')" title="Ver">' + icoHTML('view') + '</button>' +
-      (edit ? '<button class="icon-btn primary" onclick="event.stopPropagation();editarDiagnostico(\'' + docId + '\')" title="Editar">' + icoHTML('edit') + '</button>' +
-        '<button class="icon-btn del" onclick="event.stopPropagation();confirmarEliminarDiagnostico(\'' + docId + '\')" title="Eliminar">' + icoHTML('trash') + '</button>' : '');
-  };
-  const valoracion = function (d) {
-    const v = parseFloat(d.valoracion_total);
-    const col = _diagColor(v);
-    const w = isNaN(v) ? 0 : Math.max(0, Math.min(v, 100));
-    return '<div class="diag-val-cell"><div class="diag-val-num" style="color:' + col + '">' + pctTxt(d.valoracion_total) + '</div>' +
-      '<div class="diag-val-bar"><div class="diag-val-fill" style="width:' + w + '%;background:' + col + '"></div></div></div>';
-  };
-  const donuts = function (d) {
-    return '<div class="diag-donuts">' +
-      _diagDonut(d.p_organizacional, 'Organiz.') + _diagDonut(d.p_productivo, 'Product.') +
-      _diagDonut(d.p_empresarial, 'Empres.') + _diagDonut(d.p_ambiental, 'Ambien.') +
-      _diagDonut(d.p_financiero, 'Financ.') + '</div>';
-  };
+// Tarjeta de un diagnóstico (registro): año/tipo · valoración · componentes · docs · acciones.
+function _diagCardN2(d, edit) {
+  const val = parseFloat(d.valoracion_total);
+  const catg = categoriaDesdePuntaje(val);
+  const col = catg ? _asocColorCat(catg) : '#9aa2b1';
+  const valTxt = isNaN(val) ? '—' : fmtNum(val, 1) + '%';
+  const w = isNaN(val) ? 0 : Math.max(0, Math.min(val, 100));
 
-  // ── Tabla (desktop) ──
-  const filas = DIAGNOSTICOS_DATA.map(function (d) {
-    return '<tr>' +
-      '<td style="font-weight:700">' + esc(d.anio || '—') + '</td>' +
-      '<td>' + _tipoBadge(d.tipo) + '</td>' +
-      '<td style="min-width:130px">' + valoracion(d) + '</td>' +
-      '<td>' + donuts(d) + '</td>' +
-      '<td>' + (d.modulo_debil ? '<span class="diag-debil">' + esc(d.modulo_debil) + '</span>' : '—') + '</td>' +
-      '<td>' + categoriaBadge(cat(d)) + '</td>' +
-      '<td style="text-align:right"><div class="td-actions">' + acciones(d) + '</div></td>' +
-    '</tr>';
-  }).join('');
-  const tabla = '<div class="table-wrap diag-tabla-desktop"><table>' +
-    '<thead><tr><th>Año</th><th>Tipo</th><th>Valoración</th><th>Módulos</th><th>Módulo débil</th><th>Categoría</th><th style="text-align:right">Acciones</th></tr></thead>' +
-    '<tbody>' + filas + '</tbody></table></div>';
+  // Valores por módulo + índice del más débil (para destacarlo).
+  const vals = DIAG_MODULOS.map(function (m) { return parseFloat(d[m.key]); });
+  let minIdx = -1, minV = Infinity;
+  vals.forEach(function (v, i) { if (!isNaN(v) && v < minV) { minV = v; minIdx = i; } });
 
-  // ── Tarjetas (móvil) ──
-  const cards = DIAGNOSTICOS_DATA.map(function (d) {
-    return '<div class="diag-card">' +
-      '<div class="diag-card-top">' +
-        '<div class="diag-card-id"><div class="diag-card-nombre">' + esc(d.anio || '—') + ' · ' + esc(d.tipo || '') + '</div></div>' +
-        categoriaBadge(cat(d)) +
-      '</div>' +
-      '<div class="diag-card-val">' + valoracion(d) + '</div>' +
-      donuts(d) +
-      '<div class="diag-card-foot"><div class="td-actions">' + acciones(d) + '</div></div>' +
+  const mods = DIAG_MODULOS.map(function (m, i) {
+    const n = vals[i];
+    const wv = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
+    const weak = (i === minIdx);
+    return '<div class="dg2-mod' + (weak ? ' weak' : '') + '">' +
+      '<span class="dg2-mod-lbl">' + esc(m.lbl) + (weak ? '<em>más débil</em>' : '') + '</span>' +
+      '<span class="dg2-mod-bar"><i style="width:' + wv + '%;background:' + _asocRgba(col, 0.6) + '"></i></span>' +
+      '<span class="dg2-mod-val">' + (isNaN(n) ? '—' : Math.round(n)) + '</span>' +
     '</div>';
   }).join('');
-  const cardsWrap = '<div class="diag-cards-mobile">' + cards + '</div>';
 
-  wrap.innerHTML = tabla + cardsWrap +
-    '<div style="font-size:12px;color:var(--text-dim);text-align:center;margin-top:14px">' + DIAGNOSTICOS_DATA.length + ' diagnóstico' + (DIAGNOSTICOS_DATA.length !== 1 ? 's' : '') + '</div>';
+  // Documentos (solo los presentes).
+  const docChips = DIAG_DOCS.map(function (dd) {
+    const f = _diagDoc(d, dd.key);
+    return (f && f.url)
+      ? '<a class="dg2-doc" href="' + esc(f.url) + '" target="_blank" rel="noopener">' + icoHTML('view') + esc(dd.lbl) + '</a>'
+      : '';
+  }).join('');
+
+  const docId = jsEsc(d._docId || '');
+  const acts = '<button class="icon-btn" onclick="verDiagnostico(\'' + docId + '\')" title="Ver ficha">' + icoHTML('view') + '</button>' +
+    (edit ? '<button class="icon-btn primary" onclick="editarDiagnostico(\'' + docId + '\')" title="Editar">' + icoHTML('edit') + '</button>' +
+      '<button class="icon-btn del" onclick="confirmarEliminarDiagnostico(\'' + docId + '\')" title="Eliminar">' + icoHTML('trash') + '</button>' : '');
+
+  return '<article class="dg2-card">' +
+    '<span class="dg2-acc" style="background:' + col + '"></span>' +
+    '<div class="dg2-head">' +
+      '<div class="dg2-year"><span class="dg2-anio">' + esc(d.anio || '—') + '</span>' + _tipoBadge(d.tipo) + '</div>' +
+      '<div class="dg2-acts">' + acts + '</div>' +
+    '</div>' +
+    '<div class="dg2-score">' +
+      '<div class="dg2-score-l"><span class="dg2-score-lbl">Valoración total</span>' +
+        '<span class="dg2-score-val" style="color:' + col + '">' + valTxt + '</span></div>' +
+      categoriaBadge(catg) +
+    '</div>' +
+    '<div class="dg2-valbar"><i style="width:' + w + '%;background:' + col + '"></i></div>' +
+    '<div class="dg2-mods">' + mods + '</div>' +
+    (docChips ? '<div class="dg2-docs">' + docChips + '</div>' : '') +
+  '</article>';
 }
 
 function _tipoBadge(t) {
@@ -728,34 +731,39 @@ async function exportarDiagnosticosExcel() {
     .asoc-row-chev { color:var(--text-dim); display:flex; align-items:center; }
     .asoc-row-chev svg { width:18px; height:18px; }
 
-    /* Donuts de módulos */
-    .diag-donuts { display:flex; gap:14px; }
-    .diag-donut { display:flex; flex-direction:column; align-items:center; gap:4px; }
-    .diag-donut svg { width:46px; height:46px; }
-    .diag-donut-tx { font-size:11px; font-weight:800; fill:var(--text); }
-    .diag-donut-lbl { font-size:10.5px; font-weight:600; color:var(--text-muted); }
+    /* ── Nivel 2: registro de diagnósticos (tarjetas) ── */
+    .dg2-list { display:flex; flex-direction:column; gap:14px; }
+    .dg2-card { position:relative; background:var(--white); border:1px solid var(--border); border-radius:16px; padding:18px 20px 18px 22px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+    .dg2-acc { position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:16px 0 0 16px; }
+    .dg2-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .dg2-year { display:flex; align-items:center; gap:10px; min-width:0; }
+    .dg2-anio { font-size:20px; font-weight:800; color:var(--text); letter-spacing:-.3px; font-variant-numeric:tabular-nums; }
+    .dg2-acts { display:flex; gap:6px; flex-shrink:0; }
+    .dg2-score { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin-top:14px; }
+    .dg2-score-l { display:flex; flex-direction:column; min-width:0; }
+    .dg2-score-lbl { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .dg2-score-val { font-size:26px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; margin-top:2px; }
+    .dg2-valbar { height:6px; background:#eef0f4; border-radius:20px; overflow:hidden; margin:10px 0 16px; }
+    .dg2-valbar i { display:block; height:100%; border-radius:20px; transition:width .5s ease; }
+    .dg2-mods { display:flex; flex-direction:column; gap:9px; }
+    .dg2-mod { display:flex; align-items:center; gap:12px; }
+    .dg2-mod-lbl { font-size:12.5px; font-weight:600; color:var(--text-muted); width:150px; flex-shrink:0; display:flex; align-items:baseline; gap:7px; }
+    .dg2-mod-lbl em { font-style:normal; font-size:9px; font-weight:700; color:#c26a00; background:rgba(245,173,33,.16); padding:2px 7px; border-radius:20px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
+    .dg2-mod-bar { flex:1; height:7px; background:#eef0f4; border-radius:20px; overflow:hidden; min-width:40px; }
+    .dg2-mod-bar i { display:block; height:100%; border-radius:20px; transition:width .5s ease; }
+    .dg2-mod-val { font-size:13px; font-weight:800; width:30px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; color:var(--text); }
+    .dg2-mod.weak .dg2-mod-val { color:#c26a00; }
+    .dg2-docs { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+    .dg2-doc { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:#0a9e83; background:rgba(24,174,151,.08); border:1px solid rgba(24,174,151,.18); border-radius:10px; padding:7px 11px; text-decoration:none; }
+    .dg2-doc:hover { background:rgba(24,174,151,.16); }
+    .dg2-doc svg { width:14px; height:14px; }
+    .dg2-count { font-size:12px; color:var(--text-dim); text-align:center; margin-top:16px; }
 
-    /* Valoración con barra */
-    .diag-val-cell { min-width:120px; }
-    .diag-val-num { font-size:17px; font-weight:800; }
-    .diag-val-bar { height:6px; background:#eef0f4; border-radius:20px; overflow:hidden; margin-top:6px; }
-    .diag-val-fill { height:100%; border-radius:20px; transition:width .5s ease; }
-
-    .diag-debil { display:inline-block; font-size:12px; font-weight:700; color:#c26a00; background:rgba(245,173,33,.15); padding:4px 11px; border-radius:20px; }
-
-    /* Tarjetas móviles */
-    .diag-cards-mobile { display:none; flex-direction:column; gap:12px; }
-    .diag-card { background:var(--surface); border-radius:20px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.04); }
-    .diag-card-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:14px; }
-    .diag-card-id { min-width:0; }
-    .diag-card-nombre { font-size:16px; font-weight:800; color:var(--text); line-height:1.3; }
-    .diag-card-val { margin-bottom:14px; }
-    .diag-card .diag-donuts { justify-content:space-between; gap:6px; flex-wrap:wrap; }
-    .diag-card-foot { display:flex; justify-content:flex-end; margin-top:14px; padding-top:14px; border-top:1px solid var(--border); }
-
-    @media (max-width:768px) {
-      .diag-tabla-desktop { display:none; }
-      .diag-cards-mobile { display:flex; }
+    @media (max-width:560px) {
+      .dg2-card { padding:16px 16px 16px 18px; }
+      .dg2-mod-lbl { width:104px; font-size:12px; gap:0; flex-wrap:wrap; }
+      .dg2-mod-lbl em { margin-top:1px; }
+      .dg2-score-val { font-size:23px; }
     }
 
     /* ── Nivel 1: secciones por categoría + franjas desplegables ── */
