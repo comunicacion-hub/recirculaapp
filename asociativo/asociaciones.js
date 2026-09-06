@@ -176,6 +176,36 @@ function _completitud(a) {
   return { pct: pct, color: color };
 }
 
+// Aclara (p>0) u oscurece (p<0) un color hex para dar volumen a la carpeta.
+function _shade(hex, p) {
+  let h = String(hex || '').replace('#', ''); if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+  const n = parseInt(h, 16) || 0;
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  if (p >= 0) { r = Math.round(r + (255 - r) * p); g = Math.round(g + (255 - g) * p); b = Math.round(b + (255 - b) * p); }
+  else { const q = 1 + p; r = Math.round(r * q); g = Math.round(g * q); b = Math.round(b * q); }
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+// Ícono de carpeta 3D (tapa trasera + papeles + tapa frontal con degradado). w = ancho px.
+let _asocFoldUid = 0;
+function _folder3D(col, w) {
+  const id = 'af' + (_asocFoldUid++);
+  const backL = _shade(col, 0.05), backD = _shade(col, -0.30);
+  const frontL = _shade(col, 0.30), frontD = _shade(col, -0.08);
+  const h = Math.round(w * 0.82);
+  return '<svg class="asocf-ic" width="' + w + '" height="' + h + '" viewBox="0 0 64 54" xmlns="http://www.w3.org/2000/svg">' +
+    '<defs>' +
+      '<linearGradient id="' + id + 'b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + backL + '"/><stop offset="1" stop-color="' + backD + '"/></linearGradient>' +
+      '<linearGradient id="' + id + 'f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + frontL + '"/><stop offset="1" stop-color="' + frontD + '"/></linearGradient>' +
+    '</defs>' +
+    '<path d="M4 13a3 3 0 0 1 3-3h13.5a3 3 0 0 1 2.4 1.2l2.1 2.8a3 3 0 0 0 2.4 1.2H57a3 3 0 0 1 3 3v27a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="url(#' + id + 'b)"/>' +
+    '<rect x="15" y="17" width="34" height="24" rx="2.5" fill="#eef1f7"/>' +
+    '<rect x="12" y="19" width="40" height="24" rx="2.5" fill="#ffffff"/>' +
+    '<path d="M3 26a3 3 0 0 1 3-3h52a3 3 0 0 1 3 3v18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="url(#' + id + 'f)"/>' +
+    '<path d="M6 23h52a3 3 0 0 1 3 3v1H3v-1a3 3 0 0 1 3-3z" fill="rgba(255,255,255,.28)"/>' +
+  '</svg>';
+}
+
 function renderTablaAsociaciones() {
   const wrap = document.getElementById('asoc-table-wrap');
   if (!wrap) return;
@@ -186,8 +216,6 @@ function renderTablaAsociaciones() {
     return;
   }
 
-  const edit = puedeEditar();
-
   // Agrupar por provincia
   const grupos = {};
   ASOCIACIONES_DATA.forEach(function (a) {
@@ -196,52 +224,39 @@ function renderTablaAsociaciones() {
   });
   const provs = Object.keys(grupos).sort(function (a, b) { return a.localeCompare(b, 'es'); });
 
-  const acciones = function (a) {
-    const docId = jsEsc(a._docId || '');
-    return '<button class="asoc-abtn" onclick="event.stopPropagation();verAsociacion(\'' + docId + '\')" title="Ver">' + icoHTML('view') + '</button>' +
-      (edit ? '<button class="asoc-abtn" onclick="event.stopPropagation();editarAsociacion(\'' + docId + '\')" title="Editar">' + icoHTML('edit') + '</button>' +
-        '<button class="asoc-abtn del" onclick="event.stopPropagation();confirmarEliminarAsociacion(\'' + docId + '\')" title="Eliminar">' + icoHTML('trash') + '</button>' : '');
-  };
-
-  // Fila de asociación dentro de la tarjeta de la provincia: avatar + nombre + meta + pill + acciones
-  const fila = function (a, col) {
-    const docId = jsEsc(a._docId || '');
+  // Insignia de documentos (x/total) por completitud
+  const docBadge = function (a) {
     const cnt = _asocDocsCount(a);
-    const pillCol = cnt >= ASOC_DOCS_TOTAL ? '#18AE97' : cnt > 0 ? '#F5AD21' : null;
-    const pill = pillCol
-      ? '<span class="asoc-r-pill" style="background:' + _asocRgba(pillCol, 0.14) + ';color:' + pillCol + '">' + cnt + '/' + ASOC_DOCS_TOTAL + '</span>'
-      : '<span class="asoc-r-pill asoc-r-pill-0">' + cnt + '/' + ASOC_DOCS_TOTAL + '</span>';
-    const cat = categoriaVigente(a.id_asociacion);
-    return '<div class="asoc-lrow" onclick="verAsociacion(\'' + docId + '\')">' +
-      '<span class="asoc-r-ava" style="background:' + _asocRgba(col, 0.12) + ';color:' + col + '">' + esc(_inicialesAsoc(a.nombre)) + '</span>' +
-      '<span class="asoc-r-body">' +
-        '<span class="asoc-r-top"><b class="asoc-r-name">' + esc(a.nombre || '—') + '</b></span>' +
-        '<span class="asoc-r-meta">' + esc(cat || 'Pendiente') + '</span>' +
-      '</span>' +
-      '<span class="asoc-r-right">' + pill +
-        '<span class="asoc-r-acts">' + acciones(a) + '</span>' +
-      '</span>' +
-    '</div>';
+    const full = cnt >= ASOC_DOCS_TOTAL;
+    const style = full ? 'color:#0a9e83;background:rgba(24,174,151,.14)'
+      : cnt > 0 ? 'color:#c26a00;background:rgba(245,173,33,.16)'
+      : 'color:var(--text-dim);background:rgba(0,0,0,.05)';
+    return '<span class="asocf-badge" style="' + style + '">' + cnt + '/' + ASOC_DOCS_TOTAL + ' docs</span>';
   };
 
-  // Una tarjeta a ancho completo por provincia, con sus asociaciones como filas (estilo Compradores)
+  // Cada asociación es una carpeta 3D, sin tarjeta, agrupadas por provincia (encabezado afuera).
   const cuerpo = provs.map(function (prov) {
     const col = _provColorAsoc(prov);
     const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
-    return '<div class="card asoc-lvlcard">' +
-      '<div class="asoc-lvlcard-head">' +
-        '<div class="asoc-lvlcard-badge">' +
-          '<span class="asoc-lvlcard-acc" style="background:' + col + '"></span>' +
-          '<div><div class="asoc-lvlcard-name">' + esc(prov) + '</div></div>' +
-        '</div>' +
-        '<div class="asoc-lvlcard-cnt">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</div>' +
+    const carpetas = lista.map(function (a) {
+      return '<div class="asocf-fold" onclick="verAsociacion(\'' + jsEsc(a._docId || '') + '\')" title="' + esc(a.nombre || '') + '">' +
+        _folder3D(col, 72) +
+        '<span class="asocf-nom">' + esc(a.nombre || '—') + '</span>' +
+        docBadge(a) +
+      '</div>';
+    }).join('');
+    return '<div class="asocf-sec">' +
+      '<div class="asocf-h">' +
+        '<span class="asocf-dot" style="background:' + col + '"></span>' +
+        '<span class="asocf-name" style="color:' + col + '">' + esc(prov) + '</span>' +
+        '<span class="asocf-cnt">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
       '</div>' +
-      '<div class="asoc-rows">' + lista.map(function (a) { return fila(a, col); }).join('') + '</div>' +
+      '<div class="asocf-grid">' + carpetas + '</div>' +
     '</div>';
   }).join('');
 
-  wrap.innerHTML = '<div class="asoc-lvlwrap">' + cuerpo + '</div>' +
-    '<div style="font-size:12px;color:var(--text-dim);text-align:center;margin-top:16px">' + ASOCIACIONES_DATA.length + ' registro' + (ASOCIACIONES_DATA.length !== 1 ? 's' : '') + '</div>';
+  wrap.innerHTML = '<div class="asocf-wrap">' + cuerpo + '</div>' +
+    '<div style="font-size:12px;color:var(--text-dim);text-align:center;margin-top:20px">' + ASOCIACIONES_DATA.length + ' registro' + (ASOCIACIONES_DATA.length !== 1 ? 's' : '') + '</div>';
 }
 
 // ── Ver ficha (solo lectura) ──
@@ -274,7 +289,13 @@ function verAsociacion(docId) {
         '<div class="asoc-docs-ver">' + bloques + '</div>' +
         (a.observaciones ? '<div style="margin-top:14px"><div class="form-label">Observaciones</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px">' + esc(a.observaciones) + '</div></div>' : '') +
       '</div>' +
-      '<div class="modal-foot"><button class="btn btn-glass" onclick="cerrarModal()">Cerrar</button></div>' +
+      '<div class="modal-foot">' +
+        '<button class="btn btn-glass" onclick="cerrarModal()">Cerrar</button>' +
+        (puedeEditar()
+          ? '<button class="btn btn-danger" onclick="confirmarEliminarAsociacion(\'' + jsEsc(docId) + '\')">Eliminar</button>' +
+            '<button class="btn btn-primary" onclick="editarAsociacion(\'' + jsEsc(docId) + '\')">Editar</button>'
+          : '') +
+      '</div>' +
     '</div>'
   );
 }
@@ -578,6 +599,26 @@ async function exportarAsociacionesExcel() {
     .asoc-f-pend svg { width:14px; height:14px; flex-shrink:0; }
     .asoc-f-pend span { font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .asoc-f-pend small { margin-left:auto; font-size:10.5px; color:var(--text-dim); white-space:nowrap; flex-shrink:0; }
+
+    /* ── Nivel 1: grilla de carpetas 3D por provincia (sin tarjeta) ── */
+    .asocf-wrap { display:flex; flex-direction:column; }
+    .asocf-sec { margin-top:24px; }
+    .asocf-sec:first-child { margin-top:0; }
+    .asocf-h { display:flex; align-items:center; gap:9px; padding:0 2px 6px; }
+    .asocf-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .asocf-name { font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
+    .asocf-cnt { font-size:11.5px; font-weight:600; color:var(--text-dim); }
+    .asocf-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:6px; }
+    .asocf-fold { display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; padding:14px 8px 12px; border-radius:14px; cursor:pointer; transition:background .13s; }
+    .asocf-fold:hover { background:rgba(255,255,255,.7); }
+    .asocf-ic { filter:drop-shadow(0 6px 8px rgba(24,32,64,.16)); transition:transform .14s; }
+    .asocf-fold:hover .asocf-ic { transform:translateY(-2px) scale(1.03); }
+    .asocf-nom { font-size:13px; font-weight:700; color:var(--text); line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .asocf-badge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+
+    @media (max-width:560px) {
+      .asocf-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); }
+    }
 
   `;
   document.head.appendChild(s);
