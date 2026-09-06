@@ -310,21 +310,18 @@ function _diagCardN2(d, edit) {
   const catg = categoriaDesdePuntaje(val);
   const col = catg ? _asocColorCat(catg) : '#9aa2b1';
   const valTxt = isNaN(val) ? '—' : fmtNum(val, 1) + '%';
-  const w = isNaN(val) ? 0 : Math.max(0, Math.min(val, 100));
 
   // Valores por módulo + índice del más débil (para destacarlo).
   const vals = DIAG_MODULOS.map(function (m) { return parseFloat(d[m.key]); });
   let minIdx = -1, minV = Infinity;
   vals.forEach(function (v, i) { if (!isNaN(v) && v < minV) { minV = v; minIdx = i; } });
 
-  const mods = DIAG_MODULOS.map(function (m, i) {
+  const comps = DIAG_MODULOS.map(function (m, i) {
     const n = vals[i];
-    const wv = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
     const weak = (i === minIdx);
-    return '<div class="dg2-mod' + (weak ? ' weak' : '') + '">' +
-      '<span class="dg2-mod-lbl">' + esc(m.lbl) + (weak ? '<em>más débil</em>' : '') + '</span>' +
-      '<span class="dg2-mod-bar"><i style="width:' + wv + '%;background:' + _asocRgba(col, 0.6) + '"></i></span>' +
-      '<span class="dg2-mod-val">' + (isNaN(n) ? '—' : Math.round(n)) + '</span>' +
+    return '<div class="dg2-c' + (weak ? ' weak' : '') + '">' +
+      '<span class="dg2-c-lbl">' + esc(m.lbl) + (weak ? '<em>más débil</em>' : '') + '</span>' +
+      '<span class="dg2-c-val">' + (isNaN(n) ? '—' : Math.round(n)) + '</span>' +
     '</div>';
   }).join('');
 
@@ -342,7 +339,6 @@ function _diagCardN2(d, edit) {
       '<button class="icon-btn del" onclick="confirmarEliminarDiagnostico(\'' + docId + '\')" title="Eliminar">' + icoHTML('trash') + '</button>' : '');
 
   return '<article class="dg2-card">' +
-    '<span class="dg2-acc" style="background:' + col + '"></span>' +
     '<div class="dg2-head">' +
       '<div class="dg2-year"><span class="dg2-anio">' + esc(d.anio || '—') + '</span>' + _tipoBadge(d.tipo) + '</div>' +
       '<div class="dg2-acts">' + acts + '</div>' +
@@ -352,8 +348,7 @@ function _diagCardN2(d, edit) {
         '<span class="dg2-score-val" style="color:' + col + '">' + valTxt + '</span></div>' +
       categoriaBadge(catg) +
     '</div>' +
-    '<div class="dg2-valbar"><i style="width:' + w + '%;background:' + col + '"></i></div>' +
-    '<div class="dg2-mods">' + mods + '</div>' +
+    '<div class="dg2-comps">' + comps + '</div>' +
     (docChips ? '<div class="dg2-docs">' + docChips + '</div>' : '') +
   '</article>';
 }
@@ -731,39 +726,33 @@ async function exportarDiagnosticosExcel() {
     .asoc-row-chev { color:var(--text-dim); display:flex; align-items:center; }
     .asoc-row-chev svg { width:18px; height:18px; }
 
-    /* ── Nivel 2: registro de diagnósticos (tarjetas) ── */
+    /* ── Nivel 2: registro de diagnósticos (tarjeta simple, sin gráficos) ── */
     .dg2-list { display:flex; flex-direction:column; gap:14px; }
-    .dg2-card { position:relative; background:var(--white); border:1px solid var(--border); border-radius:16px; padding:18px 20px 18px 22px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
-    .dg2-acc { position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:16px 0 0 16px; }
+    .dg2-card { background:var(--white); border:1px solid var(--border); border-radius:16px; padding:18px 20px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
     .dg2-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .dg2-year { display:flex; align-items:center; gap:10px; min-width:0; }
     .dg2-anio { font-size:20px; font-weight:800; color:var(--text); letter-spacing:-.3px; font-variant-numeric:tabular-nums; }
     .dg2-acts { display:flex; gap:6px; flex-shrink:0; }
-    .dg2-score { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin-top:14px; }
+    .dg2-score { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin-top:12px; padding-bottom:14px; border-bottom:1px solid #eef1f7; }
     .dg2-score-l { display:flex; flex-direction:column; min-width:0; }
     .dg2-score-lbl { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
-    .dg2-score-val { font-size:26px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; margin-top:2px; }
-    .dg2-valbar { height:6px; background:#eef0f4; border-radius:20px; overflow:hidden; margin:10px 0 16px; }
-    .dg2-valbar i { display:block; height:100%; border-radius:20px; transition:width .5s ease; }
-    .dg2-mods { display:flex; flex-direction:column; gap:9px; }
-    .dg2-mod { display:flex; align-items:center; gap:12px; }
-    .dg2-mod-lbl { font-size:12.5px; font-weight:600; color:var(--text-muted); width:150px; flex-shrink:0; display:flex; align-items:baseline; gap:7px; }
-    .dg2-mod-lbl em { font-style:normal; font-size:9px; font-weight:700; color:#c26a00; background:rgba(245,173,33,.16); padding:2px 7px; border-radius:20px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
-    .dg2-mod-bar { flex:1; height:7px; background:#eef0f4; border-radius:20px; overflow:hidden; min-width:40px; }
-    .dg2-mod-bar i { display:block; height:100%; border-radius:20px; transition:width .5s ease; }
-    .dg2-mod-val { font-size:13px; font-weight:800; width:30px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; color:var(--text); }
-    .dg2-mod.weak .dg2-mod-val { color:#c26a00; }
-    .dg2-docs { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+    .dg2-score-val { font-size:28px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.05; margin-top:3px; }
+    .dg2-comps { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0 28px; margin-top:6px; }
+    .dg2-c { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid #f1f3f8; }
+    .dg2-c-lbl { font-size:13px; font-weight:600; color:var(--text-muted); display:flex; align-items:baseline; gap:8px; }
+    .dg2-c-lbl em { font-style:normal; font-size:9px; font-weight:700; color:#c26a00; background:rgba(245,173,33,.16); padding:2px 7px; border-radius:20px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
+    .dg2-c-val { font-size:16px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+    .dg2-c.weak .dg2-c-val { color:#c26a00; }
+    .dg2-docs { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
     .dg2-doc { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:#0a9e83; background:rgba(24,174,151,.08); border:1px solid rgba(24,174,151,.18); border-radius:10px; padding:7px 11px; text-decoration:none; }
     .dg2-doc:hover { background:rgba(24,174,151,.16); }
     .dg2-doc svg { width:14px; height:14px; }
     .dg2-count { font-size:12px; color:var(--text-dim); text-align:center; margin-top:16px; }
 
     @media (max-width:560px) {
-      .dg2-card { padding:16px 16px 16px 18px; }
-      .dg2-mod-lbl { width:104px; font-size:12px; gap:0; flex-wrap:wrap; }
-      .dg2-mod-lbl em { margin-top:1px; }
-      .dg2-score-val { font-size:23px; }
+      .dg2-card { padding:16px; }
+      .dg2-score-val { font-size:24px; }
+      .dg2-comps { grid-template-columns:1fr; }
     }
 
     /* ── Nivel 1: secciones por categoría + franjas desplegables ── */
