@@ -18,17 +18,13 @@ const DIAG_DOCS = [
 ];
 function _diagDoc(d, key) { return (d && d.documentos && d.documentos[key]) ? d.documentos[key] : null; }
 
-// Navegación de dos niveles (Nivel 1 = asociaciones por provincia; Nivel 2 = tabla de diagnósticos)
+// Navegación de dos niveles (Nivel 1 = matriz por categoría; Nivel 2 = registro de la asociación)
 let DIAG_VISTA = 'asociaciones';
 let DIAG_ASOC_SEL = null;
 
 // Copia de trabajo del formulario (documentos + archivos a papelera)
 let _DIAG_FORM = null;
 
-// N° de diagnósticos de una asociación
-function _diagCount(idAsoc) {
-  return (CAT.diagnosticos || []).filter(function (d) { return d.id_asociacion === idAsoc; }).length;
-}
 
 // Donut de porcentaje (SVG) con color por umbral
 function _diagColor(v) {
@@ -83,7 +79,7 @@ function renderVistaDiagnosticos() {
   else renderNivelAsociacionesDiag();
 }
 
-// ── Nivel 1: asociaciones por provincia (formato compartido provNavHTML) ──
+// ── Nivel 1: matriz por categoría (promedio general · componente a fortalecer) ──
 
 // Componentes (módulos) del diagnóstico, en el orden de la ficha.
 const DIAG_MODULOS = [
@@ -116,14 +112,110 @@ function renderNivelAsociacionesDiag() {
            pasaFiltro(fCat, categoriaVigente(a.id_asociacion));
   });
 
-  const html = provNavHTML(asocs, {
-    onClick: 'abrirAsociacionDiag',
-    metaFn: function (a) { return categoriaVigente(a.id_asociacion) || 'Sin diagnóstico'; },
-    rightFn: function (a, col) { return provNavPill(_diagCount(a.id_asociacion), 'diagnóstico', col); },
+  renderMatrizDiag(asocs);
+}
+
+// Diagnóstico vigente de una asociación (mayor año; a igual año, Cierre gana).
+function _diagVigenteDe(idAsoc) {
+  const ds = (CAT.diagnosticos || []).filter(function (d) { return d.id_asociacion === idAsoc; });
+  if (!ds.length) return null;
+  ds.sort(function (a, b) {
+    const ay = parseFloat(a.anio) || 0, by = parseFloat(b.anio) || 0;
+    if (by !== ay) return by - ay;
+    return (b.tipo === 'Cierre' ? 1 : 0) - (a.tipo === 'Cierre' ? 1 : 0);
   });
-  document.getElementById('diag-n1-wrap').innerHTML = html ||
-    ('<div class="empty-state">' + icoHTML('clipboard').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') +
-      '<p>No hay asociaciones con estos filtros</p></div>');
+  return ds[0];
+}
+
+// Componente más débil del diagnóstico vigente (el que hay que fortalecer).
+function _diagMasDebil(d) {
+  if (!d) return '';
+  let lbl = '', min = Infinity;
+  DIAG_MODULOS.forEach(function (m) {
+    const v = parseFloat(d[m.key]);
+    if (!isNaN(v) && v < min) { min = v; lbl = m.lbl; }
+  });
+  return lbl || (d.modulo_debil || '');
+}
+
+// ── Matriz: asociaciones por categoría · promedio general · componente a fortalecer ──
+function renderMatrizDiag(asocs) {
+  const wrap = document.getElementById('diag-n1-wrap');
+  if (!wrap) return;
+
+  const filas = (asocs || []).map(function (a) {
+    const d = _diagVigenteDe(a.id_asociacion);
+    const total = d ? parseFloat(d.valoracion_total) : NaN;
+    return {
+      id: a.id_asociacion,
+      nombre: a.nombre || '—',
+      provincia: a.provincia || '',
+      total: isNaN(total) ? null : total,
+      debil: _diagMasDebil(d),
+      cat: d ? categoriaDesdePuntaje(total) : '',
+    };
+  });
+
+  if (!filas.length) {
+    wrap.innerHTML = '<div class="empty-state">' +
+      icoHTML('clipboard').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') +
+      '<p>No hay asociaciones con estos filtros</p></div>';
+    return;
+  }
+
+  // Agrupar por categoría vigente (Sin diagnóstico al final) y ordenar por promedio
+  const GRUPOS = CATEGORIAS_DIAG.concat(['Sin diagnóstico']);
+  const porCat = {};
+  GRUPOS.forEach(function (g) { porCat[g] = []; });
+  filas.forEach(function (f) { porCat[f.cat || 'Sin diagnóstico'].push(f); });
+  GRUPOS.forEach(function (g) {
+    porCat[g].sort(function (x, y) {
+      const tx = x.total == null ? -1 : x.total, ty = y.total == null ? -1 : y.total;
+      if (ty !== tx) return ty - tx;
+      return x.nombre.localeCompare(y.nombre, 'es');
+    });
+  });
+
+  const cuerpo = GRUPOS.filter(function (g) { return porCat[g].length; }).map(function (g) {
+    const lista = porCat[g];
+    const conDiag = g !== 'Sin diagnóstico';
+    const col = conDiag ? _asocColorCat(g) : '#9aa2b1';
+    const vals = lista.filter(function (f) { return f.total != null; }).map(function (f) { return f.total; });
+    const prom = vals.length ? vals.reduce(function (s, v) { return s + v; }, 0) / vals.length : null;
+
+    const head = '<div class="dxm-grp">' +
+      '<span class="dxm-grp-dot" style="background:' + col + '"></span>' +
+      '<span class="dxm-grp-name" style="color:' + col + '">' + esc(g) + '</span>' +
+      '<span class="dxm-grp-n">' + lista.length + '</span>' +
+      (prom != null ? '<span class="dxm-grp-prom">prom. ' + fmtNum(prom, 1) + '%</span>' : '') +
+    '</div>';
+
+    const rows = lista.map(function (f) {
+      return '<div class="dxm-row" onclick="abrirAsociacionDiag(\'' + jsEsc(f.id) + '\')">' +
+        '<span class="dxm-as"><b>' + esc(f.nombre) + '</b>' + (f.provincia ? '<small>' + esc(f.provincia) + '</small>' : '') + '</span>' +
+        '<span class="dxm-prom">' + (f.total == null
+          ? '<i class="dxm-na">—</i>'
+          : '<b style="color:' + col + '">' + fmtNum(f.total, 1) + '<u>%</u></b>') + '</span>' +
+        '<span class="dxm-weak">' + (f.debil
+          ? '<i class="dxm-chip">' + esc(f.debil) + '</i>'
+          : '<i class="dxm-na">Sin diagnóstico</i>') + '</span>' +
+        '<span class="dxm-go">' + icoHTML('chevRight') + '</span>' +
+      '</div>';
+    }).join('');
+
+    return head + rows;
+  }).join('');
+
+  wrap.innerHTML =
+    '<div class="dxm">' +
+      '<div class="dxm-head">' +
+        '<span>Asociación</span>' +
+        '<span class="dxm-c">Promedio</span>' +
+        '<span>A fortalecer</span>' +
+        '<span></span>' +
+      '</div>' +
+      cuerpo +
+    '</div>';
 }
 
 function abrirAsociacionDiag(idAsoc) { DIAG_ASOC_SEL = idAsoc; DIAG_VISTA = 'lista'; renderVistaDiagnosticos(); }
@@ -631,6 +723,48 @@ async function exportarDiagnosticosExcel() {
       .dg2-card { padding:16px; }
       .dg2-score-val { font-size:24px; }
       .dg2-comps { grid-template-columns:1fr; }
+    }
+
+    /* ── Nivel 1: matriz (categoría · promedio · componente a fortalecer) ── */
+    .dxm { background:var(--white); border:1px solid var(--border); border-radius:18px; overflow:hidden; box-shadow:0 1px 2px rgba(24,32,64,.04), 0 10px 26px rgba(24,32,64,.05); }
+    .dxm-head, .dxm-row { display:grid; grid-template-columns:minmax(0,1fr) 120px minmax(150px,190px) 44px; align-items:center; gap:16px; }
+    .dxm-head { padding:13px 22px; background:#fbfcfe; border-bottom:1px solid var(--border); font-size:10.5px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.8px; }
+    .dxm-head .dxm-c { text-align:right; }
+
+    .dxm-grp { display:flex; align-items:center; gap:10px; padding:11px 22px; background:var(--surface-hover); border-bottom:1px solid var(--border); }
+    .dxm-grp:not(:first-of-type) { border-top:1px solid var(--border); }
+    .dxm-grp-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .dxm-grp-name { font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; }
+    .dxm-grp-n { font-size:10.5px; font-weight:700; color:var(--text-muted); background:var(--white); border:1px solid var(--border); border-radius:20px; padding:1px 8px; }
+    .dxm-grp-prom { margin-left:auto; font-size:11.5px; font-weight:700; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+
+    .dxm-row { padding:14px 22px; cursor:pointer; transition:background .13s; }
+    .dxm-row + .dxm-row { border-top:1px solid #f1f3f8; }
+    .dxm-row:hover { background:#fafbfd; }
+    .dxm-as { min-width:0; display:flex; flex-direction:column; }
+    .dxm-as b { font-size:14px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dxm-as small { font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+    .dxm-prom { text-align:right; }
+    .dxm-prom b { font-size:19px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.3px; }
+    .dxm-prom u { text-decoration:none; font-size:12px; font-weight:700; opacity:.65; margin-left:1px; }
+    .dxm-chip { font-style:normal; display:inline-block; font-size:12px; font-weight:700; color:#c26a00; background:rgba(245,173,33,.13); border:1px solid rgba(245,173,33,.24); padding:4px 11px; border-radius:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .dxm-na { font-style:normal; font-size:12.5px; font-weight:600; color:var(--text-dim); }
+    .dxm-go { display:flex; justify-content:flex-end; color:var(--text-dim); transition:color .13s; }
+    .dxm-go svg { width:17px; height:17px; }
+    .dxm-row:hover .dxm-go { color:#506CFF; }
+
+    /* Móvil: la fila se reacomoda en dos líneas con rótulos (sin huecos) */
+    @media (max-width:680px) {
+      .dxm-head { display:none; }
+      .dxm-grp, .dxm-row { padding-left:16px; padding-right:16px; }
+      .dxm-row { grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; }
+      .dxm-as { grid-column:1; grid-row:1; }
+      .dxm-go { grid-column:2; grid-row:1; }
+      .dxm-prom { grid-column:1 / -1; grid-row:2; text-align:left; display:flex; align-items:baseline; gap:6px; margin-top:6px; }
+      .dxm-prom::before { content:'Promedio'; font-size:10.5px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.6px; }
+      .dxm-prom b { font-size:17px; }
+      .dxm-weak { grid-column:1 / -1; grid-row:3; display:flex; align-items:center; gap:6px; margin-top:4px; }
+      .dxm-weak::before { content:'A fortalecer'; font-size:10.5px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.6px; flex-shrink:0; }
     }
 
   `;
