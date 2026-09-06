@@ -83,7 +83,7 @@ function renderVistaDiagnosticos() {
   else renderNivelAsociacionesDiag();
 }
 
-// ── Nivel 1: Desempeño asociativo (asociaciones ordenadas por categoría) ──
+// ── Nivel 1: asociaciones por provincia (formato compartido provNavHTML) ──
 
 // Componentes (módulos) del diagnóstico, en el orden de la ficha.
 const DIAG_MODULOS = [
@@ -94,23 +94,11 @@ const DIAG_MODULOS = [
   { key: 'p_financiero',     lbl: 'Financiero',     abbr: 'Financ.',  col: '#7B5CFF' },
 ];
 
-// Diagnóstico vigente de una asociación (mayor año; a igual año, Cierre gana).
-function _diagVigenteDe(idAsoc) {
-  const ds = (CAT.diagnosticos || []).filter(function (d) { return d.id_asociacion === idAsoc; });
-  if (!ds.length) return null;
-  ds.sort(function (a, b) {
-    const ay = parseFloat(a.anio) || 0, by = parseFloat(b.anio) || 0;
-    if (by !== ay) return by - ay;
-    return (b.tipo === 'Cierre' ? 1 : 0) - (a.tipo === 'Cierre' ? 1 : 0);
-  });
-  return ds[0];
-}
-
 function renderNivelAsociacionesDiag() {
   const add = puedeEditar();
   document.getElementById('main-content').innerHTML =
     '<div class="page-header">' +
-      '<div><div class="page-title">Diagnósticos</div></div>' +
+      '<div><div class="page-title">Diagnósticos</div><div class="page-sub">Elegí una asociación</div></div>' +
       '<div class="hdr-actions">' +
         '<button class="hdr-circle" onclick="openFilterDrawer(\'diagnosticos\', this)" title="Filtros">' +
           icoHTML('filter') + '<span class="filter-badge" id="diag-filter-badge" style="display:none">0</span></button>' +
@@ -120,133 +108,23 @@ function renderNivelAsociacionesDiag() {
     '</div>' +
     '<div id="diag-n1-wrap"></div>';
   updateFilterBadge('diagnosticos');
-  renderDesempenoAsociativo();
-}
-
-// Construye el cuadro de desempeño: asociaciones agrupadas por categoría vigente.
-function renderDesempenoAsociativo() {
-  const wrap = document.getElementById('diag-n1-wrap');
-  if (!wrap) return;
 
   const fProv = DIAG_FILTROS.prov || [];
   const fCat  = DIAG_FILTROS.cat  || [];
-
-  // Una fila por asociación, con su diagnóstico vigente resuelto.
-  const filas = (CAT.asocAmbiente || [])
-    .filter(function (a) { return pasaFiltro(fProv, a.provincia); })
-    .map(function (a) {
-      const d = _diagVigenteDe(a.id_asociacion);
-      const total = d ? parseFloat(d.valoracion_total) : null;
-      return {
-        id:        a.id_asociacion,
-        nombre:    a.nombre || '—',
-        provincia: a.provincia || '',
-        diag:      d,
-        total:     (total == null || isNaN(total)) ? null : total,
-        cat:       d ? categoriaDesdePuntaje(total) : '',
-      };
-    });
-
-  // Agrupar por categoría (+ "Sin diagnóstico" al final) y ordenar por desempeño.
-  const GRUPOS = CATEGORIAS_DIAG.concat(['Sin diagnóstico']);
-  const porCat = {};
-  GRUPOS.forEach(function (g) { porCat[g] = []; });
-  filas.forEach(function (f) { porCat[f.cat || 'Sin diagnóstico'].push(f); });
-  GRUPOS.forEach(function (g) {
-    porCat[g].sort(function (x, y) {
-      const tx = x.total == null ? -1 : x.total, ty = y.total == null ? -1 : y.total;
-      if (ty !== tx) return ty - tx;
-      return x.nombre.localeCompare(y.nombre, 'es');
-    });
+  const asocs = (CAT.asocAmbiente || []).filter(function (a) {
+    return pasaFiltro(fProv, a.provincia) &&
+           pasaFiltro(fCat, categoriaVigente(a.id_asociacion));
   });
 
-  // Grupos visibles: respeta el filtro de categoría; "Sin diagnóstico" solo sin ese filtro.
-  const catActivo = fCat.length > 0;
-  const gruposVis = GRUPOS.filter(function (g) {
-    if (!porCat[g].length) return false;
-    if (g === 'Sin diagnóstico') return !catActivo;
-    return !catActivo || fCat.includes(g);
+  const html = provNavHTML(asocs, {
+    onClick: 'abrirAsociacionDiag',
+    metaFn: function (a) { return categoriaVigente(a.id_asociacion) || 'Sin diagnóstico'; },
+    rightFn: function (a, col) { return provNavPill(_diagCount(a.id_asociacion), 'diagnóstico', col); },
   });
-
-  if (!gruposVis.length) {
-    wrap.innerHTML = '<div class="empty-state">' +
-      icoHTML('clipboard').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') +
-      '<p>No hay asociaciones con estos filtros</p></div>';
-    return;
-  }
-
-  // Secciones separadas por categoría (cada una por su cuenta, sin una caja
-  // única que las contenga a todas).
-  wrap.innerHTML = '<div class="diag-cats">' +
-    gruposVis.map(function (g) { return _desempSeccion(g, porCat[g]); }).join('') +
-  '</div>';
+  document.getElementById('diag-n1-wrap').innerHTML = html ||
+    ('<div class="empty-state">' + icoHTML('clipboard').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') +
+      '<p>No hay asociaciones con estos filtros</p></div>');
 }
-
-// Color y promedio de un grupo (categoría).
-function _desempGrupoMeta(cat, lista) {
-  const conDiag = cat !== 'Sin diagnóstico';
-  const col = conDiag ? _asocColorCat(cat) : '#9aa2b1';
-  const vals = lista.filter(function (f) { return f.total != null; }).map(function (f) { return f.total; });
-  const prom = vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) / vals.length : null;
-  return { conDiag: conDiag, col: col, prom: prom };
-}
-
-// Cuerpo desplegable: promedio general (número grande) + barra.
-function _desempGen(v, col) {
-  const n = parseFloat(v);
-  const w = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
-  return '<div class="diag-sgen">' +
-      '<span class="diag-sgen-lbl">Promedio general</span>' +
-      '<span class="diag-sgen-val" style="color:' + col + '">' + (isNaN(n) ? '—' : fmtNum(n, 1) + '%') + '</span>' +
-    '</div>' +
-    '<div class="diag-sgen-bar"><i style="width:' + w + '%;background:' + col + '"></i></div>';
-}
-
-// Cuerpo desplegable: promedio por componente (una fila por módulo).
-function _desempComps(f, m) {
-  return '<div class="diag-scomps">' + DIAG_MODULOS.map(function (mm) {
-    const n = parseFloat(f.diag[mm.key]);
-    const w = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
-    return '<div class="diag-scomp">' +
-      '<span class="diag-scomp-lbl">' + esc(mm.lbl) + '</span>' +
-      '<span class="diag-scomp-bar"><i style="width:' + w + '%;background:' + mm.col + '"></i></span>' +
-      '<span class="diag-scomp-val">' + (isNaN(n) ? '—' : Math.round(n)) + '</span>' +
-    '</div>';
-  }).join('') + '</div>';
-}
-
-// Franja por asociación: cerrada = tira delgada (nombre + desplegar + flecha);
-// al desplegar aparece el promedio general y por componente.
-function _desempStrip(f, m) {
-  const body = f.diag
-    ? (_desempGen(f.total, m.col) + _desempComps(f, m))
-    : '<div class="diag-ssin">Sin diagnóstico registrado</div>';
-  return '<div class="diag-strip">' +
-    '<div class="diag-shead" onclick="toggleDiagStrip(this)">' +
-      '<span class="diag-sacc" style="background:' + m.col + '"></span>' +
-      '<span class="diag-sname"><b>' + esc(f.nombre) + '</b>' + (f.provincia ? '<small>' + esc(f.provincia) + '</small>' : '') + '</span>' +
-      '<span class="diag-stog" title="Desplegar desempeño">' + icoHTML('chevDown') + '</span>' +
-      '<button class="diag-sarr" title="Ir al registro" onclick="event.stopPropagation();abrirAsociacionDiag(\'' + jsEsc(f.id) + '\')">' + icoHTML('chevRight') + '</button>' +
-    '</div>' +
-    '<div class="diag-sbody">' + body + '</div>' +
-  '</div>';
-}
-
-// Sección de una categoría: cabecera + franjas (separada de las demás).
-function _desempSeccion(cat, lista) {
-  const m = _desempGrupoMeta(cat, lista);
-  const head = '<div class="diag-cat-head">' +
-    '<span class="diag-grp-dot" style="background:' + m.col + '"></span>' +
-    '<span class="diag-grp-name" style="color:' + m.col + '">' + esc(cat) + '</span>' +
-    (m.prom != null ? '<span class="diag-grp-prom">prom. ' + fmtNum(m.prom, 1) + '%</span>' : '') +
-  '</div>';
-  return '<div class="diag-cat">' + head +
-    '<div class="diag-strips">' + lista.map(function (f) { return _desempStrip(f, m); }).join('') + '</div>' +
-  '</div>';
-}
-
-// Abrir/cerrar una franja.
-function toggleDiagStrip(el) { const s = el.closest('.diag-strip'); if (s) s.classList.toggle('open'); }
 
 function abrirAsociacionDiag(idAsoc) { DIAG_ASOC_SEL = idAsoc; DIAG_VISTA = 'lista'; renderVistaDiagnosticos(); }
 function volverAsociacionesDiag() { DIAG_VISTA = 'asociaciones'; DIAG_ASOC_SEL = null; renderVistaDiagnosticos(); }
@@ -755,51 +633,6 @@ async function exportarDiagnosticosExcel() {
       .dg2-comps { grid-template-columns:1fr; }
     }
 
-    /* ── Nivel 1: secciones por categoría + franjas desplegables ── */
-    .diag-cats { display:flex; flex-direction:column; gap:26px; }
-    .diag-cat-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; padding:0 4px 10px; }
-    .diag-grp-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
-    .diag-grp-name { font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
-    .diag-grp-count { font-size:11.5px; font-weight:600; color:var(--text-dim); }
-    .diag-grp-prom { margin-left:auto; font-size:11.5px; font-weight:700; color:var(--text-muted); background:var(--surface); border:1px solid var(--border); padding:3px 11px; border-radius:20px; white-space:nowrap; font-variant-numeric:tabular-nums; }
-
-    .diag-strips { display:flex; flex-direction:column; gap:10px; }
-
-    /* Franja: cerrada = tira delgada; abierta = crece con el detalle */
-    .diag-strip { position:relative; background:var(--white); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.03); transition:box-shadow .15s; }
-    .diag-strip:hover, .diag-strip.open { box-shadow:0 6px 18px rgba(0,0,0,.07); }
-    .diag-sacc { position:absolute; left:0; top:0; bottom:0; width:4px; }
-    .diag-shead { display:flex; align-items:center; gap:12px; padding:13px 14px 13px 20px; cursor:pointer; }
-    .diag-sname { flex:1; min-width:0; }
-    .diag-sname b { display:block; font-size:14px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .diag-sname small { display:block; font-size:11.5px; color:var(--text-muted); margin-top:1px; }
-    .diag-stog { flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; color:var(--text-dim); }
-    .diag-stog svg { width:18px; height:18px; transition:transform .2s; }
-    .diag-strip.open .diag-stog svg { transform:rotate(180deg); }
-    .diag-sarr { flex-shrink:0; width:32px; height:32px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--surface); color:var(--text-muted); cursor:pointer; padding:0; transition:.14s; }
-    .diag-sarr svg { width:16px; height:16px; }
-    .diag-sarr:hover { background:#506CFF; border-color:#506CFF; color:#fff; }
-
-    .diag-sbody { display:none; border-top:1px solid var(--border); padding:16px 18px 18px; }
-    .diag-strip.open .diag-sbody { display:block; }
-    .diag-sgen { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
-    .diag-sgen-lbl { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
-    .diag-sgen-val { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; }
-    .diag-sgen-bar { height:6px; background:#eef0f4; border-radius:20px; overflow:hidden; margin:8px 0 16px; }
-    .diag-sgen-bar i { display:block; height:100%; border-radius:20px; }
-    .diag-scomps { display:flex; flex-direction:column; gap:10px; }
-    .diag-scomp { display:flex; align-items:center; gap:12px; }
-    .diag-scomp-lbl { font-size:12.5px; font-weight:600; color:var(--text-muted); width:116px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .diag-scomp-bar { flex:1; height:7px; background:#eef0f4; border-radius:20px; overflow:hidden; }
-    .diag-scomp-bar i { display:block; height:100%; border-radius:20px; transition:width .5s ease; }
-    .diag-scomp-val { font-size:13px; font-weight:800; width:30px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; color:var(--text); }
-    .diag-ssin { font-size:13px; font-weight:600; color:var(--text-dim); }
-
-    @media (max-width:560px) {
-      .diag-shead { padding:12px 12px 12px 18px; }
-      .diag-sbody { padding:14px 14px 16px; }
-      .diag-scomp-lbl { width:96px; font-size:12px; }
-    }
   `;
   document.head.appendChild(s);
 })();

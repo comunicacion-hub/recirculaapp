@@ -720,6 +720,54 @@ function categoriaBadge(cat) {
 }
 
 // ============================================================
+// NAVEGACIÓN NIVEL 1 COMPARTIDA — tarjeta por provincia con filas de asociación
+// (formato único para Asociaciones, Diagnósticos y Encuentros)
+// ============================================================
+
+// asocs: lista con { id_asociacion, nombre, provincia }
+// opts.onClick: nombre de función global que recibe (idAsociacion)
+// opts.rightFn(a, col): HTML del lado derecho (píldora/acciones)
+// opts.metaFn(a): texto de la segunda línea (opcional)
+function provNavHTML(asocs, opts) {
+  opts = opts || {};
+  const grupos = {};
+  (asocs || []).forEach(function (a) {
+    const p = a.provincia || 'Sin provincia';
+    (grupos[p] = grupos[p] || []).push(a);
+  });
+  const provs = Object.keys(grupos).sort(function (x, y) { return x.localeCompare(y, 'es'); });
+  if (!provs.length) return '';
+  return '<div class="asoc-lvlwrap">' + provs.map(function (prov) {
+    const col = _provColorAsoc(prov);
+    const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
+    const rows = lista.map(function (a) {
+      const meta = opts.metaFn ? (opts.metaFn(a) || '') : '';
+      const right = opts.rightFn ? opts.rightFn(a, col) : '';
+      const clickAttr = opts.onClick ? ' onclick="' + opts.onClick + '(\'' + jsEsc(a.id_asociacion) + '\')"' : '';
+      return '<div class="asoc-lrow"' + clickAttr + '>' +
+        '<span class="asoc-r-ava" style="background:' + _asocRgba(col, 0.12) + ';color:' + col + '">' + esc(_inicialesAsoc(a.nombre)) + '</span>' +
+        '<span class="asoc-r-body"><span class="asoc-r-top"><b class="asoc-r-name">' + esc(a.nombre || '—') + '</b></span>' +
+          (meta ? '<span class="asoc-r-meta">' + esc(meta) + '</span>' : '') + '</span>' +
+        '<span class="asoc-r-right">' + right + '</span>' +
+      '</div>';
+    }).join('');
+    return '<div class="card asoc-lvlcard">' +
+      '<div class="asoc-lvlcard-head"><div class="asoc-lvlcard-badge">' +
+        '<span class="asoc-lvlcard-acc" style="background:' + col + '"></span>' +
+        '<div><div class="asoc-lvlcard-name">' + esc(prov) + '</div></div></div>' +
+        '<div class="asoc-lvlcard-cnt">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</div></div>' +
+      '<div class="asoc-rows">' + rows + '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+// Píldora de conteo para la navegación (reutiliza el estilo de fila de asociación)
+function provNavPill(n, singular, col) {
+  if (n > 0) return '<span class="asoc-r-pill" style="background:' + _asocRgba(col, 0.14) + ';color:' + col + '">' + n + ' ' + singular + (n !== 1 ? 's' : '') + '</span>';
+  return '<span class="asoc-r-pill asoc-r-pill-0">Sin ' + singular + 's</span>';
+}
+
+// ============================================================
 // INICIO — autenticación heredada + carga
 // ============================================================
 
