@@ -9,6 +9,10 @@
 let ENC_FILTROS = { prov: [], asoc: [], tipo: [] };
 let ENCUENTROS_DATA = [];
 
+// Navegación de dos niveles (Nivel 1 = provincia → asociación; Nivel 2 = registro)
+let ENC_VISTA = 'asociaciones';
+let ENC_ASOC_SEL = null;
+
 const TIPOS_ENCUENTRO = ['Reunión', 'Taller', 'Capacitación', 'Foro', 'Seminario', 'Otros'];
 
 // Verificables (PDF) de la ficha del encuentro — 1 archivo cada uno
@@ -92,21 +96,111 @@ function _provinciasEnc() {
 }
 
 function renderEncuentros() {
-  registerEncuentrosFilters();
+  ENC_VISTA = 'asociaciones';
+  ENC_ASOC_SEL = null;
+  renderVistaEncuentros();
+}
+
+function renderVistaEncuentros() {
+  if (ENC_VISTA === 'lista' && ENC_ASOC_SEL) renderNivelListaEnc();
+  else renderNivelAsociacionesEnc();
+}
+
+function abrirAsociacionEnc(idAsoc) { ENC_ASOC_SEL = idAsoc; ENC_VISTA = 'lista'; renderVistaEncuentros(); }
+function volverAsociacionesEnc() { ENC_VISTA = 'asociaciones'; ENC_ASOC_SEL = null; renderVistaEncuentros(); }
+
+// N° de encuentros de una asociación
+function _encCount(idAsoc) {
+  return (CAT.encuentros || []).filter(function (e) { return e.id_asociacion === idAsoc; }).length;
+}
+
+// ── Nivel 1: estadísticas globales + asociaciones agrupadas por provincia ──
+function renderNivelAsociacionesEnc() {
+  const add = puedeEditar();
   document.getElementById('main-content').innerHTML =
     '<div class="page-header">' +
-      '<div><div class="page-title">Encuentros</div><div class="page-sub">Total de relaciones</div></div>' +
+      '<div><div class="page-title">Encuentros</div><div class="page-sub">Elegí una asociación</div></div>' +
       '<div class="hdr-actions">' +
-        '<button class="hdr-circle" onclick="openFilterDrawer(\'encuentros\', this)" title="Filtros">' +
-          icoHTML('filter') + '<span class="filter-badge" id="enc-filter-badge" style="display:none">0</span></button>' +
         '<button class="hdr-circle" onclick="exportarEncuentrosExcel()" title="Descargar Excel">' + icoHTML('download') + '</button>' +
-        (puedeEditar() ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormEncuentro()" title="Nuevo encuentro">' + icoHTML('plus') + '</button>' : '') +
+        (add ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormEncuentro()" title="Nuevo encuentro">' + icoHTML('plus') + '</button>' : '') +
       '</div>' +
     '</div>' +
     '<div id="enc-stats"></div>' +
+    '<div id="enc-n1-wrap"></div>';
+
+  // Datos para exportar "todo" desde este nivel
+  ENCUENTROS_DATA = (CAT.encuentros || []).slice().sort(function (a, b) {
+    return String(b.fecha_encuentro || '').localeCompare(String(a.fecha_encuentro || ''));
+  });
+
+  // Estadísticas globales
+  const st = _encStats(CAT.encuentros || []);
+  const cont = document.getElementById('enc-stats');
+  if (cont) {
+    cont.innerHTML = '<div class="enc-stats-grid">' +
+      _encStatCard('calendar', '#506CFF', st.hoy, 'Hoy', 'encuentro' + (st.hoy !== 1 ? 's' : '')) +
+      _encStatCard('calendar', '#18AE97', st.sem, 'Esta semana', 'encuentro' + (st.sem !== 1 ? 's' : '')) +
+      _encStatCard('calendar', '#F5AD21', st.mes, 'Este mes', 'encuentro' + (st.mes !== 1 ? 's' : '')) +
+      _encStatCard('users', '#7B5CFF', fmtNum(st.asist), 'Total asistentes', 'personas') +
+    '</div>';
+  }
+
+  // Navegación por provincia → asociación
+  const wrap = document.getElementById('enc-n1-wrap');
+  const grupos = {};
+  (CAT.asocAmbiente || []).forEach(function (a) {
+    const p = a.provincia || 'Sin provincia';
+    (grupos[p] = grupos[p] || []).push(a);
+  });
+  const provs = Object.keys(grupos).sort(function (a, b) { return a.localeCompare(b, 'es'); });
+  if (!provs.length) {
+    wrap.innerHTML = '<div class="empty-state">' + icoHTML('users').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') + '<p>No hay asociaciones</p></div>';
+    return;
+  }
+  const CHEV = icoHTML('chevRight');
+  wrap.innerHTML = '<div class="enc-provs">' + provs.map(function (prov) {
+    const col = _provColorAsoc(prov);
+    const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
+    const filas = lista.map(function (a) {
+      const n = _encCount(a.id_asociacion);
+      const pill = n > 0
+        ? '<span class="enc-nrow-pill" style="background:' + _asocRgba(col, 0.14) + ';color:' + col + '">' + n + ' encuentro' + (n !== 1 ? 's' : '') + '</span>'
+        : '<span class="enc-nrow-pill enc-nrow-pill0">Sin encuentros</span>';
+      return '<div class="enc-nrow" onclick="abrirAsociacionEnc(\'' + jsEsc(a.id_asociacion) + '\')">' +
+        '<span class="enc-nrow-ico" style="background:' + _asocRgba(col, 0.12) + ';color:' + col + '">' + icoHTML('users') + '</span>' +
+        '<span class="enc-nrow-nom">' + esc(a.nombre || '—') + '</span>' +
+        '<span class="enc-nrow-right">' + pill + '<span class="enc-nrow-chev">' + CHEV + '</span></span>' +
+      '</div>';
+    }).join('');
+    return '<div class="enc-prov-grupo">' +
+      '<div class="enc-prov-cab">' +
+        '<span class="enc-prov-ico" style="background:' + _asocRgba(col, 0.14) + ';color:' + col + '">' + icoHTML('mapPin') + '</span>' +
+        '<span class="enc-prov-nom">' + esc(prov) + '</span>' +
+        '<span class="enc-prov-count">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
+      '</div>' +
+      '<div class="enc-prov-lista">' + filas + '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+// ── Nivel 2: registro de la asociación (mismas filas de la imagen, en blanco, sin charts) ──
+function renderNivelListaEnc() {
+  const add = puedeEditar();
+  const asoc = (CAT.asocAmbiente || []).find(function (a) { return a.id_asociacion === ENC_ASOC_SEL; });
+  const nombre = asoc ? (asoc.nombre || '') : '';
+  const BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
+  document.getElementById('main-content').innerHTML =
+    '<div class="page-header">' +
+      '<div><div class="ent-title-row" style="display:flex;align-items:center;gap:12px">' +
+        '<button class="ent-back" onclick="volverAsociacionesEnc()" title="Volver">' + BACK + '</button>' +
+        '<div><div class="page-title">Encuentros</div><div class="page-sub">' + esc(nombre) + '</div></div>' +
+      '</div></div>' +
+      '<div class="hdr-actions">' +
+        (add ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormEncuentro()" title="Nuevo encuentro">' + icoHTML('plus') + '</button>' : '') +
+      '</div>' +
+    '</div>' +
     '<div id="enc-table-wrap"></div>';
   cargarEncuentros();
-  updateFilterBadge('encuentros');
 }
 
 function _encStatCard(ico, color, num, lbl, sub) {
@@ -118,25 +212,12 @@ function _encStatCard(ico, color, num, lbl, sub) {
 }
 
 function cargarEncuentros() {
-  ENCUENTROS_DATA = CAT.encuentros.filter(function (e) {
-    return pasaFiltro(ENC_FILTROS.prov, e.provincia) &&
-           pasaFiltro(ENC_FILTROS.asoc, e.id_asociacion) &&
-           pasaFiltro(ENC_FILTROS.tipo, e.tipo_encuentro);
+  ENCUENTROS_DATA = (CAT.encuentros || []).filter(function (e) {
+    return e.id_asociacion === ENC_ASOC_SEL;
   }).slice().sort(function (a, b) {
     // Más reciente primero
     return String(b.fecha_encuentro || '').localeCompare(String(a.fecha_encuentro || ''));
   });
-
-  const st = _encStats(ENCUENTROS_DATA);
-  const cont = document.getElementById('enc-stats');
-  if (cont) {
-    cont.innerHTML = '<div class="enc-stats-grid">' +
-      _encStatCard('calendar', '#506CFF', st.hoy, 'Hoy', 'encuentro' + (st.hoy !== 1 ? 's' : '')) +
-      _encStatCard('calendar', '#18AE97', st.sem, 'Esta semana', 'encuentro' + (st.sem !== 1 ? 's' : '')) +
-      _encStatCard('calendar', '#F5AD21', st.mes, 'Este mes', 'encuentro' + (st.mes !== 1 ? 's' : '')) +
-      _encStatCard('users', '#7B5CFF', fmtNum(st.asist), 'Total asistentes', 'personas') +
-    '</div>';
-  }
   renderTablaEncuentros();
 }
 
@@ -146,7 +227,7 @@ function renderTablaEncuentros() {
   if (!ENCUENTROS_DATA.length) {
     wrap.innerHTML = '<div class="empty-state">' +
       icoHTML('calendar').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') +
-      '<p>No hay encuentros con estos filtros</p></div>';
+      '<p>Esta asociación aún no tiene encuentros</p></div>';
     return;
   }
   const edit = puedeEditar();
@@ -265,7 +346,7 @@ async function eliminarEncuentro(docId, folderId) {
   CAT.encuentros = CAT.encuentros.filter(function (x) { return x._docId !== docId; });
   showToast(r.offline ? 'Eliminado (se sincronizará) ✓' : 'Encuentro eliminado ✓');
   cerrarModal();
-  cargarEncuentros();
+  renderVistaEncuentros();
 }
 
 // ── Formulario ──
@@ -282,11 +363,18 @@ function abrirFormEncuentro(docId) {
     eliminar: [],
   };
 
+  // Preselección de asociación al crear desde el Nivel 2
+  const preAsoc = (!editing && ENC_VISTA === 'lista' && ENC_ASOC_SEL) ? ENC_ASOC_SEL : '';
+  const preAmb = preAsoc ? (CAT.asocAmbiente || []).find(function (a) { return a.id_asociacion === preAsoc; }) : null;
+
   const asocField = editing
     ? '<input type="text" class="form-input" value="' + esc(e.nombre_asociacion) + '" readonly>' +
       '<input type="hidden" id="enc-asoc" value="' + esc(e.id_asociacion) + '">'
-    : '<select class="form-select" id="enc-asoc" onchange="onAsocChangeEnc(this.value)">' +
-        '<option value="">Seleccioná una asociación…</option>' + _asocOptions('') + '</select>';
+    : (preAmb
+        ? '<input type="text" class="form-input" value="' + esc(preAmb.nombre) + '" readonly>' +
+          '<input type="hidden" id="enc-asoc" value="' + esc(preAsoc) + '">'
+        : '<select class="form-select" id="enc-asoc" onchange="onAsocChangeEnc(this.value)">' +
+            '<option value="">Seleccioná una asociación…</option>' + _asocOptions('') + '</select>');
 
   const tipoOpts = TIPOS_ENCUENTRO.map(function (t) {
     return '<option value="' + t + '"' + (e && e.tipo_encuentro === t ? ' selected' : '') + '>' + t + '</option>';
@@ -302,7 +390,7 @@ function abrirFormEncuentro(docId) {
       '<div class="modal-body">' +
         '<div class="form-grid-2">' +
           '<div class="form-group"><label class="form-label">Asociación</label>' + asocField + '</div>' +
-          '<div class="form-group"><label class="form-label">Provincia</label><input type="text" class="form-input" id="enc-provincia" readonly value="' + esc(e ? e.provincia : '') + '"></div>' +
+          '<div class="form-group"><label class="form-label">Provincia</label><input type="text" class="form-input" id="enc-provincia" readonly value="' + esc(e ? e.provincia : (preAmb ? preAmb.provincia : '')) + '"></div>' +
           '<div class="form-group" style="grid-column:1/-1"><label class="form-label">Nombre del encuentro</label><input type="text" class="form-input" id="enc-nombre" placeholder="Ej. Taller de fortalecimiento" value="' + esc(e ? e.nombre_encuentro : '') + '"></div>' +
           '<div class="form-group"><label class="form-label">Fecha</label><input type="date" class="form-input" id="enc-fecha" value="' + (e && e.fecha_encuentro ? String(e.fecha_encuentro).substring(0, 10) : hoy) + '"></div>' +
           '<div class="form-group"><label class="form-label">Tipo de encuentro</label><select class="form-select" id="enc-tipo">' + tipoOpts + '</select></div>' +
@@ -463,7 +551,7 @@ async function guardarEncuentro(docId) {
   if (!r.ok) { showToast('Error al guardar: ' + (r.error || '')); if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } return; }
   showToast(r.offline ? 'Guardado (se sincronizará) ✓' : 'Guardado ✓');
   cerrarModal();
-  cargarEncuentros();
+  renderVistaEncuentros();
 }
 
 // ── Exportar Excel ──
@@ -503,6 +591,30 @@ async function exportarEncuentrosExcel() {
     .enc-stat-num { font-size:26px; font-weight:800; color:var(--text); }
     .enc-stat-sub { font-size:11px; color:var(--text-dim); }
 
+    /* Nivel 1: botón volver + navegación provincia → asociación */
+    .ent-back { width:38px; height:38px; border-radius:11px; border:1px solid var(--border); background:var(--surface); color:var(--text-muted); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:background .15s,color .15s; }
+    .ent-back:hover { background:var(--surface-hover); color:var(--text); }
+    .ent-back svg { width:18px; height:18px; }
+
+    .enc-provs { display:flex; flex-direction:column; gap:22px; }
+    .enc-prov-cab { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+    .enc-prov-ico { width:34px; height:34px; border-radius:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+    .enc-prov-ico svg { width:17px; height:17px; }
+    .enc-prov-nom { font-size:14px; font-weight:800; color:var(--text); text-transform:uppercase; letter-spacing:.4px; }
+    .enc-prov-count { font-size:11px; font-weight:600; color:var(--text-dim); background:rgba(0,0,0,.04); padding:3px 10px; border-radius:20px; }
+    .enc-prov-lista { display:flex; flex-direction:column; gap:10px; }
+
+    .enc-nrow { display:flex; align-items:center; gap:14px; width:100%; text-align:left; background:var(--white); border:1px solid var(--border); border-radius:15px; padding:13px 18px; cursor:pointer; transition:box-shadow .15s,transform .12s,border-color .15s; }
+    .enc-nrow:hover { box-shadow:0 6px 18px rgba(0,0,0,.08); transform:translateY(-2px); border-color:transparent; }
+    .enc-nrow-ico { width:40px; height:40px; border-radius:11px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+    .enc-nrow-ico svg { width:19px; height:19px; }
+    .enc-nrow-nom { flex:1; min-width:0; font-size:14px; font-weight:700; color:var(--text); line-height:1.3; }
+    .enc-nrow-right { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+    .enc-nrow-pill { font-size:12.5px; font-weight:700; padding:5px 12px; border-radius:20px; white-space:nowrap; }
+    .enc-nrow-pill0 { color:var(--text-dim); background:rgba(0,0,0,.05); }
+    .enc-nrow-chev { color:var(--text-dim); display:flex; align-items:center; }
+    .enc-nrow-chev svg { width:18px; height:18px; }
+
     /* Timeline de encuentros */
     .enc-list { display:flex; flex-direction:column; gap:16px; }
     .enc-row { display:flex; align-items:stretch; gap:18px; }
@@ -511,7 +623,7 @@ async function exportarEncuentrosExcel() {
     .enc-date-m { font-size:12px; font-weight:800; letter-spacing:.5px; margin-top:2px; }
     .enc-date-y { font-size:11px; color:var(--text-dim); font-weight:600; margin-top:2px; }
 
-    .enc-cardrow { flex:1; min-width:0; display:flex; align-items:center; gap:16px; background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.04); }
+    .enc-cardrow { flex:1; min-width:0; display:flex; align-items:center; gap:16px; background:var(--white); border:1px solid var(--border); border-radius:18px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.04); }
     .enc-cardrow-ico { width:52px; height:52px; border-radius:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
     .enc-cardrow-ico svg { width:24px; height:24px; }
     .enc-cardrow-main { flex:1; min-width:0; }
