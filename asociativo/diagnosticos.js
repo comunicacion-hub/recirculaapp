@@ -87,11 +87,11 @@ function renderVistaDiagnosticos() {
 
 // Componentes (módulos) del diagnóstico, en el orden de la ficha.
 const DIAG_MODULOS = [
-  { key: 'p_organizacional', lbl: 'Organizacional', abbr: 'Organiz.' },
-  { key: 'p_productivo',     lbl: 'Productivo',     abbr: 'Product.' },
-  { key: 'p_empresarial',    lbl: 'Empresarial',    abbr: 'Empres.' },
-  { key: 'p_ambiental',      lbl: 'Ambiental',      abbr: 'Ambien.' },
-  { key: 'p_financiero',     lbl: 'Financiero',     abbr: 'Financ.' },
+  { key: 'p_organizacional', lbl: 'Organizacional', abbr: 'Organiz.', col: '#506CFF' },
+  { key: 'p_productivo',     lbl: 'Productivo',     abbr: 'Product.', col: '#FF751F' },
+  { key: 'p_empresarial',    lbl: 'Empresarial',    abbr: 'Empres.',  col: '#F82D72' },
+  { key: 'p_ambiental',      lbl: 'Ambiental',      abbr: 'Ambien.',  col: '#18AE97' },
+  { key: 'p_financiero',     lbl: 'Financiero',     abbr: 'Financ.',  col: '#7B5CFF' },
 ];
 
 // Diagnóstico vigente de una asociación (mayor año; a igual año, Cierre gana).
@@ -209,7 +209,7 @@ function _desempComps(f, m) {
     const w = isNaN(n) ? 0 : Math.max(0, Math.min(n, 100));
     return '<div class="diag-scomp">' +
       '<span class="diag-scomp-lbl">' + esc(mm.lbl) + '</span>' +
-      '<span class="diag-scomp-bar"><i style="width:' + w + '%;background:' + _asocRgba(m.col, 0.6) + '"></i></span>' +
+      '<span class="diag-scomp-bar"><i style="width:' + w + '%;background:' + mm.col + '"></i></span>' +
       '<span class="diag-scomp-val">' + (isNaN(n) ? '—' : Math.round(n)) + '</span>' +
     '</div>';
   }).join('') + '</div>';
