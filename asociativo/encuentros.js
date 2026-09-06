@@ -114,7 +114,7 @@ function _encCount(idAsoc) {
   return (CAT.encuentros || []).filter(function (e) { return e.id_asociacion === idAsoc; }).length;
 }
 
-// ── Nivel 1: asociaciones por provincia (formato compartido provNavHTML) ──
+// ── Nivel 1: carpetas 3D por provincia (mismo formato que Asociaciones) ──
 function renderNivelAsociacionesEnc() {
   const add = puedeEditar();
   document.getElementById('main-content').innerHTML =
@@ -132,12 +132,41 @@ function renderNivelAsociacionesEnc() {
     return String(b.fecha_encuentro || '').localeCompare(String(a.fecha_encuentro || ''));
   });
 
-  const html = provNavHTML(CAT.asocAmbiente, {
-    onClick: 'abrirAsociacionEnc',
-    rightFn: function (a, col) { return provNavPill(_encCount(a.id_asociacion), 'encuentro', col); },
-  });
-  document.getElementById('enc-n1-wrap').innerHTML = html ||
-    ('<div class="empty-state">' + icoHTML('users').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') + '<p>No hay asociaciones</p></div>');
+  const wrap = document.getElementById('enc-n1-wrap');
+  const asocs = CAT.asocAmbiente || [];
+  if (!asocs.length) {
+    wrap.innerHTML = '<div class="empty-state">' + icoHTML('users').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') + '<p>No hay asociaciones</p></div>';
+    return;
+  }
+  const grupos = {};
+  asocs.forEach(function (a) { const p = a.provincia || 'Sin provincia'; (grupos[p] = grupos[p] || []).push(a); });
+  const provs = Object.keys(grupos).sort(function (a, b) { return a.localeCompare(b, 'es'); });
+
+  const badge = function (a) {
+    const n = _encCount(a.id_asociacion);
+    const style = n > 0 ? 'color:#0a9e83;background:rgba(24,174,151,.14)' : 'color:var(--text-dim);background:rgba(0,0,0,.05)';
+    return '<span class="asocf-badge" style="' + style + '">' + (n > 0 ? (n + ' encuentro' + (n !== 1 ? 's' : '')) : 'Sin encuentros') + '</span>';
+  };
+
+  wrap.innerHTML = '<div class="asocf-wrap">' + provs.map(function (prov) {
+    const col = _provColorAsoc(prov);
+    const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
+    const carpetas = lista.map(function (a) {
+      return '<div class="asocf-fold" onclick="abrirAsociacionEnc(\'' + jsEsc(a.id_asociacion) + '\')" title="' + esc(a.nombre || '') + '">' +
+        _folder3D(col, 72) +
+        '<span class="asocf-nom">' + esc(a.nombre || '—') + '</span>' +
+        badge(a) +
+      '</div>';
+    }).join('');
+    return '<div class="asocf-sec">' +
+      '<div class="asocf-h">' +
+        '<span class="asocf-dot" style="background:' + col + '"></span>' +
+        '<span class="asocf-name" style="color:' + col + '">' + esc(prov) + '</span>' +
+        '<span class="asocf-cnt">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
+      '</div>' +
+      '<div class="asocf-grid">' + carpetas + '</div>' +
+    '</div>';
+  }).join('') + '</div>';
 }
 
 // ── Nivel 2: registro de la asociación (mismas filas de la imagen, en blanco, sin charts) ──

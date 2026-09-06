@@ -149,7 +149,7 @@ function cargarAsociaciones() {
 }
 
 // Paleta y color por provincia (encabezado de grupo)
-const ASOC_PROV_PAL = ['#506CFF', '#18AE97', '#F5AD21', '#F82D72', '#FF751F', '#33A8DE', '#7B5CFF', '#0BC3FF'];
+const ASOC_PROV_PAL = ['#506CFF', '#18AE97', '#F5AD21', '#FF751F', '#33A8DE', '#7B5CFF', '#0BC3FF'];
 function _provColorAsoc(prov) {
   const k = String(prov || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0;
@@ -190,8 +190,8 @@ function _shade(hex, p) {
 let _asocFoldUid = 0;
 function _folder3D(col, w) {
   const id = 'af' + (_asocFoldUid++);
-  const backL = _shade(col, 0.05), backD = _shade(col, -0.30);
-  const frontL = _shade(col, 0.30), frontD = _shade(col, -0.08);
+  const backL = _shade(col, 0.30), backD = _shade(col, -0.02);
+  const frontL = _shade(col, 0.48), frontD = _shade(col, 0.12);
   const h = Math.round(w * 0.82);
   return '<svg class="asocf-ic" width="' + w + '" height="' + h + '" viewBox="0 0 64 54" xmlns="http://www.w3.org/2000/svg">' +
     '<defs>' +
