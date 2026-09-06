@@ -58,7 +58,7 @@ const HOME = (() => {
     'Otros':        { color: '#0d9aa8', icon: 'calendar' },
   };
 
-  const _PROV_PAL = ['#506CFF', '#18AE97', '#F5AD21', '#F82D72', '#FF751F', '#33A8DE', '#7B5CFF', '#0BC3FF'];
+  const _PROV_PAL = ['#506CFF', '#18AE97', '#F5AD21', '#35B04A', '#FF751F', '#33A8DE', '#7B5CFF', '#0BC3FF'];
   function _colorProv(prov) {
     if (typeof _provColorAsoc === 'function') return _provColorAsoc(prov);
     const k = String(prov || '').toLowerCase();

@@ -149,7 +149,7 @@ function cargarAsociaciones() {
 }
 
 // Paleta y color por provincia (encabezado de grupo)
-const ASOC_PROV_PAL = ['#506CFF', '#18AE97', '#F5AD21', '#FF751F', '#33A8DE', '#7B5CFF', '#0BC3FF'];
+const ASOC_PROV_PAL = ['#506CFF', '#18AE97', '#F5AD21', '#35B04A', '#FF751F', '#33A8DE', '#7B5CFF', '#0BC3FF'];
 function _provColorAsoc(prov) {
   const k = String(prov || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0;
