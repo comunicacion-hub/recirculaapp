@@ -153,7 +153,7 @@ function renderNivelAsociacionesEnc() {
     const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
     const carpetas = lista.map(function (a) {
       return '<div class="asocf-fold" onclick="abrirAsociacionEnc(\'' + jsEsc(a.id_asociacion) + '\')" title="' + esc(a.nombre || '') + '">' +
-        _folder3D(col, 72) +
+        _folderIcon(72) +
         '<span class="asocf-nom">' + esc(a.nombre || '—') + '</span>' +
         badge(a) +
       '</div>';

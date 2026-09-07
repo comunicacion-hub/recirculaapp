@@ -176,33 +176,19 @@ function _completitud(a) {
   return { pct: pct, color: color };
 }
 
-// Aclara (p>0) u oscurece (p<0) un color hex para dar volumen a la carpeta.
-function _shade(hex, p) {
-  let h = String(hex || '').replace('#', ''); if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
-  const n = parseInt(h, 16) || 0;
-  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  if (p >= 0) { r = Math.round(r + (255 - r) * p); g = Math.round(g + (255 - g) * p); b = Math.round(b + (255 - b) * p); }
-  else { const q = 1 + p; r = Math.round(r * q); g = Math.round(g * q); b = Math.round(b * q); }
-  return 'rgb(' + r + ',' + g + ',' + b + ')';
-}
-
-// Ícono de carpeta 3D (tapa trasera + papeles + tapa frontal con degradado). w = ancho px.
+// Ícono de carpeta estilo Windows: pestaña ámbar + cuerpo amarillo.
+// Siempre el mismo color (el color distintivo vive en el título de la sección).
 let _asocFoldUid = 0;
-function _folder3D(col, w) {
+function _folderIcon(w) {
   const id = 'af' + (_asocFoldUid++);
-  const backL = _shade(col, 0.30), backD = _shade(col, -0.02);
-  const frontL = _shade(col, 0.48), frontD = _shade(col, 0.12);
-  const h = Math.round(w * 0.82);
-  return '<svg class="asocf-ic" width="' + w + '" height="' + h + '" viewBox="0 0 64 54" xmlns="http://www.w3.org/2000/svg">' +
+  const h = Math.round(w * 0.80);
+  return '<svg class="asocf-ic" width="' + w + '" height="' + h + '" viewBox="0 0 64 52" xmlns="http://www.w3.org/2000/svg">' +
     '<defs>' +
-      '<linearGradient id="' + id + 'b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + backL + '"/><stop offset="1" stop-color="' + backD + '"/></linearGradient>' +
-      '<linearGradient id="' + id + 'f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + frontL + '"/><stop offset="1" stop-color="' + frontD + '"/></linearGradient>' +
+      '<linearGradient id="' + id + 't" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E9AC12"/><stop offset="1" stop-color="#CE8F04"/></linearGradient>' +
+      '<linearGradient id="' + id + 'b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD75E"/><stop offset="1" stop-color="#F7C03A"/></linearGradient>' +
     '</defs>' +
-    '<path d="M4 13a3 3 0 0 1 3-3h13.5a3 3 0 0 1 2.4 1.2l2.1 2.8a3 3 0 0 0 2.4 1.2H57a3 3 0 0 1 3 3v27a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="url(#' + id + 'b)"/>' +
-    '<rect x="15" y="17" width="34" height="24" rx="2.5" fill="#eef1f7"/>' +
-    '<rect x="12" y="19" width="40" height="24" rx="2.5" fill="#ffffff"/>' +
-    '<path d="M3 26a3 3 0 0 1 3-3h52a3 3 0 0 1 3 3v18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="url(#' + id + 'f)"/>' +
-    '<path d="M6 23h52a3 3 0 0 1 3 3v1H3v-1a3 3 0 0 1 3-3z" fill="rgba(255,255,255,.28)"/>' +
+    '<path d="M4 9a4 4 0 0 1 4-4h13.6a4 4 0 0 1 3.2 1.6l4.6 6.1H4z" fill="url(#' + id + 't)"/>' +
+    '<rect x="3" y="11" width="58" height="36" rx="5.5" fill="url(#' + id + 'b)"/>' +
   '</svg>';
 }
 
@@ -240,7 +226,7 @@ function renderTablaAsociaciones() {
     const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
     const carpetas = lista.map(function (a) {
       return '<div class="asocf-fold" onclick="verAsociacion(\'' + jsEsc(a._docId || '') + '\')" title="' + esc(a.nombre || '') + '">' +
-        _folder3D(col, 72) +
+        _folderIcon(72) +
         '<span class="asocf-nom">' + esc(a.nombre || '—') + '</span>' +
         docBadge(a) +
       '</div>';
