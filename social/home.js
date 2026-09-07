@@ -93,14 +93,20 @@ const HOME = (() => {
   }
 
   // ── Conjuntos filtrados ──
+  // La asociación se resuelve al _docId canónico de Asoc_Ambiente (mismo criterio
+  // que la sección Recicladores), porque los registros referencian la asociación
+  // de formas distintas (doc.id del formulario externo vs. campo id_asociacion).
+  function _asocDocIds(ids) {
+    return (ids || []).map(function (x) { const a = _buscarAsoc(x); return a ? a._docId : x; });
+  }
   function _recFiltrados() {
     return CAT.recicladores.filter(function (r) {
-      return pasaFiltro(_fProvs, provinciaDeReciclador(r)) && pasaFiltro(_fAsocs, r.id_asociacion);
+      return pasaFiltro(_fProvs, provinciaDeReciclador(r)) && pasaFiltro(_fAsocs, _asocDocIdDeReciclador(r));
     });
   }
   function _aliFiltradas() {
     return CAT.alianzas.filter(function (a) {
-      return pasaFiltroLista(_fProvs, a.provincias) && pasaFiltroLista(_fAsocs, a.asociaciones);
+      return pasaFiltroLista(_fProvs, a.provincias) && pasaFiltroLista(_fAsocs, _asocDocIds(a.asociaciones));
     });
   }
 
@@ -108,7 +114,7 @@ const HOME = (() => {
     return Array.from(new Set(CAT.asocAmbiente.map(function (a) { return a.provincia; }).filter(Boolean))).sort();
   }
   function _asociaciones() {
-    return CAT.asocAmbiente.map(function (a) { return { val: a.id_asociacion, lbl: a.nombre }; });
+    return CAT.asocAmbiente.map(function (a) { return { val: a._docId, lbl: a.nombre }; });
   }
 
   // ── Render principal ──
@@ -117,7 +123,7 @@ const HOME = (() => {
     document.getElementById('main-content').innerHTML =
       '<div class="page-header">' +
         '<div>' +
-          '<div class="page-title">Dashboard Social</div>' +
+          '<div class="page-title">Gráficos</div>' +
           '<div class="page-sub">' + esc(fmtFechaLarga(new Date())) + '</div>' +
         '</div>' +
         '<div class="hdr-actions">' +
@@ -202,7 +208,7 @@ const HOME = (() => {
     const itemsEdadSin = _itemsRango(contSin, listaSin.length, rangos);
 
     return '<div class="charts-grid">' +
-      _chartCard('Alianzas por etapa', 'users', totA ? _barsBlock(itemsEtapa, totA) : _emptyAlianzas()) +
+      _chartCard('Alianzas por etapa', 'users', _stagesBlockAlianzas(itemsEtapa, totA)) +
       _chartCard('Recicladores por provincia', 'mapPin', _barsBlockProv(itemsProv, totR)) +
       _chartCard('Recicladores por sexo', 'user', _donutBlock(segSexo, fmtNum(totR), 'recicladores')) +
       _chartCard('Recicladores con RUC', 'file', _donutBlock(segRuc, fmtPct(totR ? conRuc / totR * 100 : 0), 'con RUC')) +
@@ -306,6 +312,29 @@ const HOME = (() => {
     }).join('') + '</div>';
   }
 
+  // Alianzas por etapa: filas de etapa (más altas) + recuadro "Total".
+  // Cada etapa es un % independiente (una alianza puede tener varias etapas).
+  function _stagesBlockAlianzas(items, total) {
+    if (!total) return _emptyAlianzas();
+    const filas = items.map(function (it) {
+      const ancho = it.pct > 0 ? Math.max(it.pct, 3) : 0;
+      return '<div class="ali-stage">' +
+        '<div class="ali-stage-top">' +
+          '<span class="ali-stage-dot" style="background:' + it.color + '"></span>' +
+          '<span class="ali-stage-lbl">' + esc(it.label) + '</span>' +
+          '<span class="ali-stage-pct">' + fmtPct(it.pct) + '</span>' +
+          '<span class="ali-stage-n">' + it.value + '</span>' +
+        '</div>' +
+        '<div class="ali-stage-track"><div class="ali-stage-fill" style="width:' + ancho + '%;background:' + it.color + '"></div></div>' +
+      '</div>';
+    }).join('');
+    return '<div class="ali-stages">' + filas + '</div>' +
+      '<div class="bars-total">' +
+        '<span class="bars-total-lbl">' + icoHTML('handshake') + ' Total</span>' +
+        '<span class="bars-total-val">' + fmtNum(total) + ' <em>alianza' + (total !== 1 ? 's' : '') + '</em></span>' +
+      '</div>';
+  }
+
   // Barras de provincia + recuadro "Total" abajo
   function _barsBlockProv(items, total) {
     if (!total || !items.length) return '<div class="chart-empty">Sin datos para mostrar</div>';
@@ -389,7 +418,7 @@ function renderHome() { HOME.render(); }
   const s = document.createElement('style');
   s.id = 'home-styles';
   s.textContent = `
-    .charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+    .charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; align-items:start; }
     .chart-card { background:var(--surface); border-radius:20px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.04); }
     .chart-head { display:flex; align-items:center; gap:11px; margin-bottom:18px; }
     .chart-ico { width:38px; height:38px; border-radius:11px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
@@ -429,6 +458,17 @@ function renderHome() { HOME.render(); }
     .bar-val em { font-style:normal; color:var(--text-dim); font-weight:600; }
     .bar-track { height:10px; background:#eef0f4; border-radius:20px; overflow:hidden; }
     .bar-fill { height:100%; border-radius:20px; transition:width .5s ease; }
+
+    /* Alianzas por etapa — filas de etapa más altas (evita espacios fantasmas) */
+    .ali-stages { display:flex; flex-direction:column; gap:16px; }
+    .ali-stage { display:flex; flex-direction:column; gap:8px; }
+    .ali-stage-top { display:flex; align-items:center; gap:9px; }
+    .ali-stage-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .ali-stage-lbl { font-size:13.5px; font-weight:700; color:var(--text); flex:1; min-width:0; }
+    .ali-stage-pct { font-size:13.5px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+    .ali-stage-n { font-size:11.5px; font-weight:700; color:var(--text-muted); background:rgba(0,0,0,.05); padding:2px 9px; border-radius:20px; min-width:26px; text-align:center; }
+    .ali-stage-track { height:14px; background:#eef0f4; border-radius:20px; overflow:hidden; }
+    .ali-stage-fill { height:100%; border-radius:20px; transition:width .5s ease; min-width:0; }
 
     /* Recuadro Total (barras de provincia) */
     .bars-total { display:flex; align-items:center; justify-content:space-between; margin-top:16px; padding:12px 14px; background:rgba(51,168,222,.07); border-radius:12px; }
