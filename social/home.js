@@ -121,7 +121,7 @@ const HOME = (() => {
           '<div class="page-sub">' + esc(fmtFechaLarga(new Date())) + '</div>' +
         '</div>' +
         '<div class="hdr-actions">' +
-          '<button class="hdr-circle" onclick="openFilterDrawer(\'home\')" title="Filtros" aria-label="Filtros">' +
+          '<button class="hdr-circle" onclick="openFilterDrawer(\'home\', this)" title="Filtros" aria-label="Filtros">' +
             icoHTML('filter') + '<span class="filter-badge" id="home-filter-badge" style="display:none"></span>' +
           '</button>' +
           '<button class="hdr-circle" onclick="volverAlHub()" title="Volver al Hub" aria-label="Volver al Hub">' +

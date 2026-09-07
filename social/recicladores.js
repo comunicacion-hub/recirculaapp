@@ -266,7 +266,7 @@ function renderListaAsociacion() {
         '</div>' +
       '</div>' +
       '<div class="hdr-actions">' +
-        '<button class="hdr-circle" onclick="openFilterDrawer(\'recicladores\')" title="Filtrar">' +
+        '<button class="hdr-circle" onclick="openFilterDrawer(\'recicladores\', this)" title="Filtrar">' +
           icoHTML('filter') + '<span class="filter-badge" id="recs-filter-badge" style="display:none">0</span></button>' +
         '<button class="hdr-circle" onclick="exportarRecicladoresExcel()" title="Descargar Excel">' + icoHTML('download') + '</button>' +
         (add ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormReciclador(null,\'' + jsEsc(RECS_ASOC_SEL) + '\')" title="Nuevo reciclador">' + icoHTML('plus') + '</button>' : '') +

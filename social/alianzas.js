@@ -52,7 +52,7 @@ function renderAlianzas() {
     '<div class="page-header">' +
       '<div><div class="page-title">Alianzas</div><div class="page-sub">Públicas/Privadas</div></div>' +
       '<div class="hdr-actions">' +
-        '<button class="hdr-circle" onclick="openFilterDrawer(\'alianzas\')" title="Filtros">' +
+        '<button class="hdr-circle" onclick="openFilterDrawer(\'alianzas\', this)" title="Filtros">' +
           icoHTML('filter') + '<span class="filter-badge" id="ali-filter-badge" style="display:none">0</span></button>' +
         '<button class="hdr-circle" onclick="exportarAlianzasExcel()" title="Descargar Excel">' + icoHTML('download') + '</button>' +
         (add ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormAlianza()" title="Nueva alianza">' + icoHTML('plus') + '</button>' : '') +

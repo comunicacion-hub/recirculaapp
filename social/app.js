@@ -517,11 +517,13 @@ function registerFilterConfig(scope, cfg) { FILTER_CONFIGS[scope] = cfg; }
 
 let currentFilterScope = null;
 let pendingFilters = {};
+let _filterDrawerBtn = null;   // botón que abrió el popover (para anclarlo y no auto-cerrarlo)
 
-function openFilterDrawer(scope) {
+function openFilterDrawer(scope, btn) {
   const cfg = FILTER_CONFIGS[scope];
   if (!cfg) return;
   currentFilterScope = scope;
+  _filterDrawerBtn = btn || null;
 
   pendingFilters = {};
   cfg.sections.forEach(function (sec) {
@@ -529,89 +531,117 @@ function openFilterDrawer(scope) {
     pendingFilters[sec.key] = Array.isArray(v) ? v.slice() : (v ? [v] : []);
   });
 
-  const body = document.getElementById('filter-drawer-body');
-  body.innerHTML = cfg.sections.map(function (sec, i) {
-    const isOpen = i === 0;
-    return '<div class="filter-section ' + (isOpen ? 'open' : '') + '" data-key="' + sec.key + '">' +
-      '<button class="filter-section-head" onclick="toggleFilterSection(this)">' +
-        '<span>' + sec.title + '</span>' +
-        icoHTML('chevDown').replace('<svg', '<svg class="chev"') +
-      '</button>' +
-      '<div class="filter-section-body">' + renderFilterSection(sec) + '</div>' +
+  document.getElementById('filter-drawer-body').innerHTML = _buildFilterBody(cfg);
+  _refreshFilterCount();
+  document.getElementById('filter-drawer').classList.add('open');
+  if (_filterDrawerBtn) _posicionarFilterDrawer(_filterDrawerBtn);
+}
+
+// Cuerpo del popover: un grupo por sección con chips (o buscador).
+function _buildFilterBody(cfg) {
+  return cfg.sections.map(function (sec) {
+    return '<div class="filter-group" data-key="' + sec.key + '">' +
+      '<div class="filter-group-lbl">' + esc(sec.title) + '</div>' +
+      renderFilterSection(sec) +
     '</div>';
   }).join('');
-
-  document.getElementById('filter-drawer').classList.add('open');
 }
+
+function _refreshFilterCount() {
+  const cfg = FILTER_CONFIGS[currentFilterScope]; if (!cfg) return;
+  let n = 0;
+  cfg.sections.forEach(function (sec) {
+    if (sec.noBadge) return;
+    const v = pendingFilters[sec.key];
+    const arr = Array.isArray(v) ? v : (v ? [v] : []);
+    if (arr.filter(function (x) { return x && x !== '__ALL__'; }).length) n++;
+  });
+  const c = document.getElementById('filter-drawer-count');
+  if (c) { c.textContent = n; c.style.display = n > 0 ? 'inline-flex' : 'none'; }
+}
+
+// Ancla el popover bajo el botón que lo abrió, con la colita apuntándolo.
+function _posicionarFilterDrawer(btn) {
+  const drawer = document.getElementById('filter-drawer');
+  const surface = document.getElementById('filter-drawer-surface');
+  const tail = document.getElementById('filter-drawer-tail');
+  if (!drawer || !surface || !tail) return;
+  const margin = 16;
+  const r = btn.getBoundingClientRect();
+  const surfaceW = Math.min(360, window.innerWidth - margin * 2);
+  let left = Math.max(margin, Math.min(r.right - surfaceW, window.innerWidth - surfaceW - margin));
+  let top = Math.min(r.bottom + 12, window.innerHeight - margin - 120);
+  drawer.style.left = left + 'px';
+  drawer.style.top = top + 'px';
+  let tailLeft = Math.max(14, Math.min(r.left + r.width / 2 - left - 7, surfaceW - 28));
+  tail.style.left = tailLeft + 'px';
+}
+
+window.addEventListener('scroll', function () {
+  const drawer = document.getElementById('filter-drawer');
+  if (drawer && drawer.classList.contains('open') && _filterDrawerBtn) _posicionarFilterDrawer(_filterDrawerBtn);
+}, true);
+
+document.addEventListener('click', function (e) {
+  const drawer = document.getElementById('filter-drawer');
+  if (!drawer || !drawer.classList.contains('open')) return;
+  if (drawer.contains(e.target)) return;
+  if (_filterDrawerBtn && (e.target === _filterDrawerBtn || _filterDrawerBtn.contains(e.target))) return;
+  closeFilterDrawer();
+});
 
 function renderFilterSection(sec) {
   const current = pendingFilters[sec.key];
   const arr = Array.isArray(current) ? current : (current ? [current] : []);
   if (sec.type === 'search') {
     const txt = arr[0] || '';
-    return '<input type="text" class="filter-search" placeholder="' + (sec.placeholder || '') + '"' +
+    return '<div class="filter-search-box">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+      '<input type="text" class="filter-search" placeholder="' + esc(sec.placeholder || '') + '"' +
       ' value="' + esc(txt) + '"' +
-      ' oninput="pendingFilters[\'' + sec.key + '\'] = this.value ? [this.value] : []">';
+      ' oninput="pendingFilters[\'' + sec.key + '\'] = this.value ? [this.value] : []; _refreshFilterCount();">' +
+    '</div>';
   }
   if (sec.type === 'radio') {
     const opts = sec.options || [];
     const sel = arr[0] || sec.def || '';
-    return opts.map(function (o) {
+    return '<div class="filter-chips">' + opts.map(function (o) {
       const val = typeof o === 'object' ? o.val : o;
       const lbl = typeof o === 'object' ? o.lbl : o;
-      const on = val === sel ? 'checked' : '';
-      return '<label class="filter-opt"><input type="radio" name="rad-' + sec.key + '" value="' + esc(val) + '" ' + on +
-        ' onchange="toggleFilterRadio(\'' + sec.key + '\',\'' + jsEsc(val) + '\')"><span>' + esc(lbl) + '</span></label>';
-    }).join('');
+      const on = val === sel ? ' on' : '';
+      return '<button type="button" class="filter-chip' + on + '" data-val="' + esc(val) + '"' +
+        ' onclick="toggleFilterRadioChip(\'' + jsEsc(sec.key) + '\',\'' + jsEsc(val) + '\', this)">' + esc(lbl) + '</button>';
+    }).join('') + '</div>';
   }
-  if (sec.type === 'options') {
-    const opts = sec.options || [];
-    if (!opts.length) return '<div style="font-size:13px;color:var(--text-dim);padding:8px 12px">Sin opciones disponibles</div>';
-    const allChecked = arr.includes('__ALL__');
-    const allOpt = '<label class="filter-opt filter-opt-all">' +
-      '<input type="checkbox" value="__ALL__" ' + (allChecked ? 'checked' : '') +
-        ' onchange="toggleFilterAll(\'' + sec.key + '\', this.checked)">' +
-      '<span><strong>Ver todos</strong></span>' +
-    '</label><div style="border-top:1px solid var(--border);margin:4px 12px;"></div>';
-    const list = opts.map(function (o) {
-      const val = typeof o === 'object' ? o.val : o;
-      const lbl = typeof o === 'object' ? o.lbl : o;
-      const checked = arr.includes(val) ? 'checked' : '';
-      return '<label class="filter-opt">' +
-        '<input type="checkbox" value="' + esc(val) + '" ' + checked +
-          ' onchange="toggleFilterValue(\'' + sec.key + '\',\'' + jsEsc(val) + '\', this.checked)">' +
-        '<span>' + esc(lbl) + '</span>' +
-      '</label>';
-    }).join('');
-    return allOpt + list;
-  }
-  return '';
+  // 'options' → chips multi-select; sin ninguno activo = todos.
+  const opts = sec.options || [];
+  if (!opts.length) return '<div class="filter-empty">Sin opciones disponibles</div>';
+  return '<div class="filter-chips">' + opts.map(function (o) {
+    const val = typeof o === 'object' ? o.val : o;
+    const lbl = typeof o === 'object' ? o.lbl : o;
+    const on = arr.includes(val) ? ' on' : '';
+    return '<button type="button" class="filter-chip' + on + '" data-val="' + esc(val) + '"' +
+      ' onclick="toggleFilterChip(\'' + jsEsc(sec.key) + '\',\'' + jsEsc(val) + '\', this)">' + esc(lbl) + '</button>';
+  }).join('') + '</div>';
 }
 
-function toggleFilterAll(key, checked) {
-  pendingFilters[key] = checked ? ['__ALL__'] : [];
-  const body = document.getElementById('filter-drawer-body');
-  const section = body ? body.querySelector('.filter-section[data-key="' + key + '"]') : null;
-  if (!section) return;
-  const cfg = FILTER_CONFIGS[currentFilterScope];
-  const sec = cfg.sections.find(function (s) { return s.key === key; });
-  section.querySelector('.filter-section-body').innerHTML = renderFilterSection(sec);
-}
-
-function toggleFilterValue(key, val, checked) {
+function toggleFilterChip(key, val, el) {
   if (!Array.isArray(pendingFilters[key])) pendingFilters[key] = pendingFilters[key] ? [pendingFilters[key]] : [];
   let arr = pendingFilters[key].filter(function (v) { return v !== '__ALL__'; });
-  const idx = arr.indexOf(val);
-  if (checked && idx === -1) arr.push(val);
-  else if (!checked && idx !== -1) arr.splice(idx, 1);
+  const i = arr.indexOf(val);
+  if (i === -1) arr.push(val); else arr.splice(i, 1);
   pendingFilters[key] = arr;
-  const body = document.getElementById('filter-drawer-body');
-  const section = body ? body.querySelector('.filter-section[data-key="' + key + '"]') : null;
-  if (section) { const allCb = section.querySelector('input[value="__ALL__"]'); if (allCb) allCb.checked = false; }
+  if (el) el.classList.toggle('on');
+  _refreshFilterCount();
 }
 
-function toggleFilterSection(btn) { btn.closest('.filter-section').classList.toggle('open'); }
-function toggleFilterRadio(key, val) { pendingFilters[key] = [val]; }
+// Chip de selección única (reemplaza los radios): activa uno y apaga los hermanos.
+function toggleFilterRadioChip(key, val, el) {
+  pendingFilters[key] = [val];
+  if (el && el.parentElement) el.parentElement.querySelectorAll('.filter-chip').forEach(function (c) { c.classList.toggle('on', c === el); });
+  _refreshFilterCount();
+}
+
 function closeFilterDrawer() { const d = document.getElementById('filter-drawer'); if (d) d.classList.remove('open'); }
 
 function applyFilters() {
@@ -627,19 +657,8 @@ function clearFilters() {
   const cfg = FILTER_CONFIGS[currentFilterScope];
   if (!cfg) return;
   cfg.sections.forEach(function (sec) { pendingFilters[sec.key] = []; });
-  const body = document.getElementById('filter-drawer-body');
-  const openKeys = new Set();
-  body.querySelectorAll('.filter-section.open').forEach(function (s) { openKeys.add(s.dataset.key); });
-  body.innerHTML = cfg.sections.map(function (sec) {
-    const isOpen = openKeys.has(sec.key);
-    return '<div class="filter-section ' + (isOpen ? 'open' : '') + '" data-key="' + sec.key + '">' +
-      '<button class="filter-section-head" onclick="toggleFilterSection(this)">' +
-        '<span>' + sec.title + '</span>' +
-        icoHTML('chevDown').replace('<svg', '<svg class="chev"') +
-      '</button>' +
-      '<div class="filter-section-body">' + renderFilterSection(sec) + '</div>' +
-    '</div>';
-  }).join('');
+  document.getElementById('filter-drawer-body').innerHTML = _buildFilterBody(cfg);
+  _refreshFilterCount();
 }
 
 function updateFilterBadge(scope) {
@@ -653,8 +672,10 @@ function updateFilterBadge(scope) {
     if (!Array.isArray(v)) return v && v.toString().trim() !== '' && v !== '__ALL__';
     return v.length > 0 && !v.includes('__ALL__');
   }).length;
-  if (count > 0) { badge.textContent = count; badge.style.display = 'inline-flex'; }
-  else { badge.style.display = 'none'; }
+  // Sin círculo naranja: el botón mismo se tiñe de índigo discreto.
+  badge.style.display = 'none';
+  const btn = badge.closest('.hdr-circle');
+  if (btn) btn.classList.toggle('has-filters', count > 0);
 }
 
 function pasaFiltro(arr, val) {

@@ -74,7 +74,7 @@ function renderHitos() {
     '<div class="page-header">' +
       '<div><div class="page-title">Hitos</div><div class="page-sub">Registro de acciones</div></div>' +
       '<div class="hdr-actions">' +
-        '<button class="hdr-circle" onclick="openFilterDrawer(\'hitos\')" title="Filtros">' +
+        '<button class="hdr-circle" onclick="openFilterDrawer(\'hitos\', this)" title="Filtros">' +
           icoHTML('filter') + '<span class="filter-badge" id="hit-filter-badge" style="display:none">0</span></button>' +
         '<button class="hdr-circle" onclick="exportarHitosExcel()" title="Descargar Excel">' + icoHTML('download') + '</button>' +
         (add ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormHito()" title="Nuevo hito">' + icoHTML('plus') + '</button>' : '') +
