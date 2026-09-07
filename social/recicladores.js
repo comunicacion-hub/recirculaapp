@@ -67,6 +67,22 @@ function _rgba(hex, a) {
   return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
 }
 
+// Ícono de carpeta estilo Windows: pestaña ámbar + cuerpo amarillo.
+// Siempre el mismo color (el color distintivo vive en el encabezado de provincia).
+let _recFoldUid = 0;
+function _folderIcon(w) {
+  const id = 'rf' + (_recFoldUid++);
+  const h = Math.round(w * 0.80);
+  return '<svg class="asocf-ic" width="' + w + '" height="' + h + '" viewBox="0 0 64 52" xmlns="http://www.w3.org/2000/svg">' +
+    '<defs>' +
+      '<linearGradient id="' + id + 't" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E9AC12"/><stop offset="1" stop-color="#CE8F04"/></linearGradient>' +
+      '<linearGradient id="' + id + 'b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD75E"/><stop offset="1" stop-color="#F7C03A"/></linearGradient>' +
+    '</defs>' +
+    '<path d="M4 9a4 4 0 0 1 4-4h13.6a4 4 0 0 1 3.2 1.6l4.6 6.1H4z" fill="url(#' + id + 't)"/>' +
+    '<rect x="3" y="11" width="58" height="36" rx="5.5" fill="url(#' + id + 'b)"/>' +
+  '</svg>';
+}
+
 // Avatar con iniciales (color determinista por nombre)
 function _inicialRec(nombre) {
   const parts = String(nombre || '').trim().split(/\s+/).filter(Boolean);
@@ -190,34 +206,33 @@ function renderAsociacionesCards() {
   });
   const provsOrden = Object.keys(grupos).sort(function (a, b) { return a.localeCompare(b, 'es'); });
 
-  const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
-
+  // Cada asociación es una carpeta 3D (estilo Windows), agrupadas por provincia.
   const cuerpo = provsOrden.map(function (prov) {
     const est = _provEstilo(prov);
     const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
-    const filas = lista.map(function (a) {
+    const carpetas = lista.map(function (a) {
       const n = conteo[a._docId] || 0;
       const vacia = n === 0;
-      const pill = vacia
-        ? '<span class="asoc-pill asoc-pill-0">0</span>'
-        : '<span class="asoc-pill" style="background:' + _rgba(est.color, 0.13) + ';color:' + est.color + '">' + n + '</span>';
-      return '<button class="asoc-row' + (vacia ? ' asoc-row-vacia' : '') + '" onclick="abrirAsociacionRecs(\'' + jsEsc(a._docId) + '\')">' +
-        '<span class="asoc-row-ico" style="background:' + _rgba(est.color, 0.12) + ';color:' + est.color + '">' + icoHTML('users') + '</span>' +
-        '<span class="asoc-row-nombre">' + esc(a.nombre || '—') + '</span>' +
-        '<span class="asoc-row-right">' + pill + '<span class="asoc-row-chev">' + CHEV + '</span></span>' +
-      '</button>';
+      const badgeStyle = vacia
+        ? 'color:var(--text-dim);background:rgba(0,0,0,.05)'
+        : 'color:' + est.color + ';background:' + _rgba(est.color, 0.14);
+      return '<div class="asocf-fold' + (vacia ? ' asocf-fold-vacia' : '') + '" onclick="abrirAsociacionRecs(\'' + jsEsc(a._docId) + '\')" title="' + esc(a.nombre || '') + '">' +
+        _folderIcon(72) +
+        '<span class="asocf-nom">' + esc(a.nombre || '—') + '</span>' +
+        '<span class="asocf-badge" style="' + badgeStyle + '" title="' + n + ' reciclador' + (n !== 1 ? 'es' : '') + '">' + n + '</span>' +
+      '</div>';
     }).join('');
-    return '<div class="asoc-grupo">' +
-      '<div class="asoc-grupo-titulo">' +
-        '<span class="asoc-prov-ico" style="background:' + _rgba(est.color, 0.14) + ';color:' + est.color + '">' + icoHTML(est.ico) + '</span>' +
-        '<span class="asoc-prov-nom">' + esc(prov) + '</span>' +
-        '<span class="asoc-prov-count">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
+    return '<div class="asocf-sec">' +
+      '<div class="asocf-h">' +
+        '<span class="asocf-dot" style="background:' + est.color + '"></span>' +
+        '<span class="asocf-name" style="color:' + est.color + '">' + esc(prov) + '</span>' +
+        '<span class="asocf-cnt">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
       '</div>' +
-      '<div class="asoc-grupo-lista">' + filas + '</div>' +
+      '<div class="asocf-grid">' + carpetas + '</div>' +
     '</div>';
   }).join('');
 
-  document.getElementById('main-content').innerHTML = header + '<div class="asoc-provs">' + cuerpo + '</div>';
+  document.getElementById('main-content').innerHTML = header + '<div class="asocf-wrap">' + cuerpo + '</div>';
 }
 
 function abrirAsociacionRecs(docId) {
@@ -949,31 +964,26 @@ async function importarRecicladoresExcel(input) {
     .rec-lightbox-cap { text-align:center; color:#fff; font-size:13px; font-weight:600; margin-top:10px; }
     .rec-lightbox-x { position:absolute; top:-14px; right:-14px; width:34px; height:34px; border-radius:50%; border:none; background:#fff; color:#333; font-size:22px; line-height:1; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,.3); }
 
-    /* Nivel 1: asociaciones agrupadas por provincia */
-    .asoc-provs { display:flex; flex-direction:column; gap:20px; }
-    .asoc-grupo-titulo { display:flex; align-items:center; gap:9px; margin-bottom:9px; padding-left:2px; }
-    .asoc-prov-ico { width:30px; height:30px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
-    .asoc-prov-ico svg { width:17px; height:17px; }
-    .asoc-prov-nom { font-size:12px; font-weight:800; color:var(--text); text-transform:uppercase; letter-spacing:.7px; }
-    .asoc-prov-count { font-size:11.5px; font-weight:600; color:var(--text-dim); border-left:1.5px solid var(--border); padding-left:9px; }
-    .asoc-grupo-lista { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
-    .asoc-row {
-      display:flex; align-items:center; gap:12px; width:100%;
-      background:none; border:none; border-bottom:1px solid var(--border);
-      padding:12px 16px; cursor:pointer; font-family:inherit; text-align:left; transition:background .13s;
+    /* Nivel 1: grilla de carpetas 3D por provincia (sin tarjeta) */
+    .asocf-wrap { display:flex; flex-direction:column; }
+    .asocf-sec { margin-top:24px; }
+    .asocf-sec:first-child { margin-top:0; }
+    .asocf-h { display:flex; align-items:center; gap:9px; padding:0 2px 6px; }
+    .asocf-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .asocf-name { font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
+    .asocf-cnt { font-size:11.5px; font-weight:600; color:var(--text-dim); }
+    .asocf-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:6px; }
+    .asocf-fold { display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; padding:14px 8px 12px; border-radius:14px; cursor:pointer; transition:background .13s; }
+    .asocf-fold:hover { background:rgba(255,255,255,.7); }
+    .asocf-fold-vacia { opacity:.62; }
+    .asocf-ic { filter:drop-shadow(0 6px 8px rgba(24,32,64,.16)); transition:transform .14s; }
+    .asocf-fold:hover .asocf-ic { transform:translateY(-2px) scale(1.03); }
+    .asocf-nom { font-size:13px; font-weight:700; color:var(--text); line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .asocf-badge { font-size:11px; font-weight:700; min-width:24px; padding:3px 9px; border-radius:20px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+
+    @media (max-width:560px) {
+      .asocf-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); }
     }
-    .asoc-row:last-child { border-bottom:none; }
-    .asoc-row:hover { background:rgba(80,108,255,.05); }
-    .asoc-row-ico { width:34px; height:34px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
-    .asoc-row-ico svg { width:18px; height:18px; }
-    .asoc-row-nombre { font-size:14px; color:var(--text); line-height:1.35; flex:1; min-width:0; }
-    .asoc-row-vacia { opacity:.62; }
-    .asoc-row-right { display:flex; align-items:center; gap:11px; flex-shrink:0; }
-    .asoc-pill { font-size:12px; font-weight:700; min-width:26px; height:22px; padding:0 8px; border-radius:20px; display:inline-flex; align-items:center; justify-content:center; }
-    .asoc-pill-0 { background:rgba(0,0,0,.05); color:var(--text-dim); font-weight:600; }
-    .asoc-row-chev { color:var(--text-dim); display:inline-flex; transition:transform .13s; }
-    .asoc-row-chev svg { width:18px; height:18px; }
-    .asoc-row:hover .asoc-row-chev { transform:translateX(3px); color:#506CFF; }
 
     /* Nivel 2: volver + título */
     .rec-title-row { display:flex; align-items:center; gap:12px; }
