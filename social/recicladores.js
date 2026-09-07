@@ -276,7 +276,6 @@ function renderListaAsociacion() {
           '<button class="rec-back" onclick="volverAAsociaciones()" title="Volver a asociaciones">' + BACK + '</button>' +
           '<div class="rec-asoc-info">' +
             '<div class="page-title">Recicladores</div>' +
-            '<div class="rec-asoc-conteo">' + total + ' reciclador' + (total !== 1 ? 'es' : '') + '</div>' +
           '</div>' +
         '</div>' +
       '</div>' +

@@ -19,11 +19,49 @@ const HITO_DOCS = [
 ];
 
 // ── Estado ──
-let HIT_FILTROS = { prov: [], asoc: [], tipo: [], anio: [], mes: [], actor: [] };
+let HIT_FILTROS = { prov: [], tipo: [], anio: [], mes: [], actor: [] };
 let HITOS_DATA = [];
 let HIT_PAGINA = 1;
 const HIT_POR_PAGINA = 8;
 function irPaginaHitos(p) { HIT_PAGINA = p; renderTablaHitos(); }
+
+// ── Navegación de dos niveles (Nivel 1 = provincia → asociación; Nivel 2 = registro) ──
+let HIT_VISTA = 'asociaciones';   // 'asociaciones' | 'lista'
+let HIT_ASOC_SEL = null;          // id_asociacion abierta ('__SIN__' = hitos sin asociación)
+
+// Ícono de carpeta estilo Windows (mismo que Recicladores/Encuentros).
+let _hitFoldUid = 0;
+function _folderIconHit(w) {
+  const id = 'hf' + (_hitFoldUid++);
+  const h = Math.round(w * 0.80);
+  return '<svg class="asocf-ic" width="' + w + '" height="' + h + '" viewBox="0 0 64 52" xmlns="http://www.w3.org/2000/svg">' +
+    '<defs>' +
+      '<linearGradient id="' + id + 't" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E9AC12"/><stop offset="1" stop-color="#CE8F04"/></linearGradient>' +
+      '<linearGradient id="' + id + 'b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD75E"/><stop offset="1" stop-color="#F7C03A"/></linearGradient>' +
+    '</defs>' +
+    '<path d="M4 9a4 4 0 0 1 4-4h13.6a4 4 0 0 1 3.2 1.6l4.6 6.1H4z" fill="url(#' + id + 't)"/>' +
+    '<rect x="3" y="11" width="58" height="36" rx="5.5" fill="url(#' + id + 'b)"/>' +
+  '</svg>';
+}
+
+// Color de encabezado por provincia (misma paleta que el Nivel 1 asociativo).
+const HIT_PROV_PAL = ['#506CFF', '#18AE97', '#F5AD21', '#35B04A', '#FF751F', '#33A8DE', '#7B5CFF', '#0BC3FF'];
+function _provColorHit(prov) {
+  const k = String(prov || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0;
+  return HIT_PROV_PAL[h % HIT_PROV_PAL.length];
+}
+
+// N° de hitos que benefician a una asociación (o sin asociación con '__SIN__').
+function _hitEnAsoc(h, sel) {
+  if (!sel) return true;
+  const arr = h.asociaciones || [];
+  if (sel === '__SIN__') return arr.length === 0;
+  return arr.indexOf(sel) !== -1;
+}
+function _hitCount(idAsoc) {
+  return CAT.hitos.filter(function (h) { return (h.asociaciones || []).indexOf(idAsoc) !== -1; }).length;
+}
 
 // ── Helpers ──
 function _hitoDoc(h, key) { return (h && h.documentos && h.documentos[key]) ? h.documentos[key] : null; }
@@ -54,7 +92,6 @@ function registerHitosFilters() {
     badgeId: 'hit-filter-badge',
     sections: [
       { key: 'prov',  title: 'Provincia',  type: 'options', options: _provinciasHit() },
-      { key: 'asoc',  title: 'Asociación', type: 'options', options: _asociacionesHit() },
       { key: 'tipo',  title: 'Tipo',       type: 'options', options: HITO_TIPOS },
       { key: 'anio',  title: 'Año',        type: 'options', options: _aniosHit() },
       { key: 'mes',   title: 'Mes',        type: 'options', options: HITO_MESES },
@@ -69,10 +106,108 @@ function registerHitosFilters() {
 // ── Render principal ──
 function renderHitos() {
   registerHitosFilters();
+  HIT_VISTA = 'asociaciones';   // al entrar siempre se muestran las asociaciones
+  HIT_ASOC_SEL = null;
+  renderVistaHitos();
+  updateFilterBadge('hitos');
+}
+
+function renderVistaHitos() {
+  if (HIT_VISTA === 'lista' && HIT_ASOC_SEL) renderNivelListaHitos();
+  else renderNivelAsociacionesHitos();
+}
+
+function abrirAsociacionHit(idAsoc) { HIT_ASOC_SEL = idAsoc; HIT_VISTA = 'lista'; renderVistaHitos(); }
+function volverAsociacionesHit() { HIT_ASOC_SEL = null; HIT_VISTA = 'asociaciones'; renderVistaHitos(); }
+
+// ── Nivel 1: carpetas 3D por provincia → asociación (como Encuentros) ──
+function renderNivelAsociacionesHitos() {
   const add = puedeEditar();
   document.getElementById('main-content').innerHTML =
     '<div class="page-header">' +
-      '<div><div class="page-title">Hitos</div><div class="page-sub">Registro de acciones</div></div>' +
+      '<div><div class="page-title">Hitos</div><div class="page-sub">Elegí una asociación</div></div>' +
+      '<div class="hdr-actions">' +
+        '<button class="hdr-circle" onclick="exportarHitosExcel()" title="Descargar Excel">' + icoHTML('download') + '</button>' +
+        (add ? '<button class="hdr-circle hdr-circle-primary" onclick="abrirFormHito()" title="Nuevo hito">' + icoHTML('plus') + '</button>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div id="hit-n1-wrap"></div>';
+
+  // Datos para exportar "todo" desde este nivel
+  HITOS_DATA = CAT.hitos.slice().sort(function (a, b) {
+    const fa = a.fecha || (a.anio ? String(a.anio) : '');
+    const fb = b.fecha || (b.anio ? String(b.anio) : '');
+    return fb.localeCompare(fa);
+  });
+
+  const wrap = document.getElementById('hit-n1-wrap');
+  const asocs = CAT.asocAmbiente || [];
+  if (!asocs.length) {
+    wrap.innerHTML = '<div class="empty-state">' + icoHTML('flag').replace('<svg', '<svg style="width:48px;height:48px;opacity:0.4"') + '<p>No hay asociaciones</p></div>';
+    return;
+  }
+  const grupos = {};
+  asocs.forEach(function (a) { const p = a.provincia || 'Sin provincia'; (grupos[p] = grupos[p] || []).push(a); });
+  const provs = Object.keys(grupos).sort(function (a, b) { return a.localeCompare(b, 'es'); });
+
+  const badge = function (n) {
+    const style = n > 0 ? 'color:#7a4ddb;background:rgba(123,92,255,.14)' : 'color:var(--text-dim);background:rgba(0,0,0,.05)';
+    return '<span class="asocf-badge" style="' + style + '">' + (n > 0 ? (n + ' hito' + (n !== 1 ? 's' : '')) : 'Sin hitos') + '</span>';
+  };
+
+  let html = provs.map(function (prov) {
+    const col = _provColorHit(prov);
+    const lista = grupos[prov].slice().sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
+    const carpetas = lista.map(function (a) {
+      return '<div class="asocf-fold" onclick="abrirAsociacionHit(\'' + jsEsc(a.id_asociacion) + '\')" title="' + esc(a.nombre || '') + '">' +
+        _folderIconHit(72) +
+        '<span class="asocf-nom">' + esc(a.nombre || '—') + '</span>' +
+        badge(_hitCount(a.id_asociacion)) +
+      '</div>';
+    }).join('');
+    return '<div class="asocf-sec">' +
+      '<div class="asocf-h">' +
+        '<span class="asocf-dot" style="background:' + col + '"></span>' +
+        '<span class="asocf-name" style="color:' + col + '">' + esc(prov) + '</span>' +
+        '<span class="asocf-cnt">' + lista.length + ' asociaci' + (lista.length !== 1 ? 'ones' : 'ón') + '</span>' +
+      '</div>' +
+      '<div class="asocf-grid">' + carpetas + '</div>' +
+    '</div>';
+  }).join('');
+
+  // Grupo aparte para hitos sin asociación asignada (para que no queden ocultos)
+  const orphan = CAT.hitos.filter(function (h) { return !(h.asociaciones || []).length; }).length;
+  if (orphan) {
+    html += '<div class="asocf-sec">' +
+      '<div class="asocf-h">' +
+        '<span class="asocf-dot" style="background:#9aa0b5"></span>' +
+        '<span class="asocf-name" style="color:#6b6b80">Sin asociación</span>' +
+        '<span class="asocf-cnt">hitos sin asociación asignada</span>' +
+      '</div>' +
+      '<div class="asocf-grid"><div class="asocf-fold" onclick="abrirAsociacionHit(\'__SIN__\')" title="Hitos sin asociación">' +
+        _folderIconHit(72) +
+        '<span class="asocf-nom">Sin asociación</span>' +
+        '<span class="asocf-badge" style="color:#6b6b80;background:rgba(0,0,0,.05)">' + orphan + ' hito' + (orphan !== 1 ? 's' : '') + '</span>' +
+      '</div></div>' +
+    '</div>';
+  }
+
+  wrap.innerHTML = '<div class="asocf-wrap">' + html + '</div>';
+}
+
+// ── Nivel 2: registro de hitos de la asociación seleccionada ──
+function renderNivelListaHitos() {
+  const add = puedeEditar();
+  const sinAsoc = HIT_ASOC_SEL === '__SIN__';
+  const asoc = sinAsoc ? null : (CAT.asocAmbiente || []).find(function (a) { return a.id_asociacion === HIT_ASOC_SEL; });
+  const nombre = sinAsoc ? 'Sin asociación asignada' : (asoc ? (asoc.nombre || '') : '');
+  const BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
+  document.getElementById('main-content').innerHTML =
+    '<div class="page-header">' +
+      '<div><div class="rec-title-row" style="display:flex;align-items:center;gap:12px">' +
+        '<button class="rec-back" onclick="volverAsociacionesHit()" title="Volver a asociaciones">' + BACK + '</button>' +
+        '<div><div class="page-title">Hitos</div><div class="page-sub">' + esc(nombre) + '</div></div>' +
+      '</div></div>' +
       '<div class="hdr-actions">' +
         '<button class="hdr-circle" onclick="openFilterDrawer(\'hitos\', this)" title="Filtros">' +
           icoHTML('filter') + '<span class="filter-badge" id="hit-filter-badge" style="display:none">0</span></button>' +
@@ -88,8 +223,8 @@ function renderHitos() {
 function cargarHitos() {
   HIT_PAGINA = 1;
   HITOS_DATA = CAT.hitos.filter(function (h) {
-    return pasaFiltroLista(HIT_FILTROS.prov, h.provincias) &&
-      pasaFiltroLista(HIT_FILTROS.asoc, h.asociaciones) &&
+    return _hitEnAsoc(h, HIT_ASOC_SEL) &&
+      pasaFiltroLista(HIT_FILTROS.prov, h.provincias) &&
       pasaFiltroLista(HIT_FILTROS.tipo, h.tipos) &&
       pasaFiltro(HIT_FILTROS.anio, String(h.anio || '')) &&
       pasaFiltro(HIT_FILTROS.mes, h.mes) &&
@@ -434,7 +569,7 @@ async function guardarHito(docId) {
   if (!r.ok) { showToast('Error al guardar: ' + (r.error || '')); if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; } return; }
   showToast(r.offline ? 'Guardado (se sincronizará) ✓' : 'Guardado ✓');
   cerrarModal();
-  cargarHitos();
+  renderVistaHitos();
 }
 
 // ── Eliminar (registro + papelera de la carpeta del hito) ──
@@ -465,7 +600,7 @@ async function eliminarHito(docId, carpetaId) {
   CAT.hitos = CAT.hitos.filter(function (x) { return x._docId !== docId; });
   showToast(r.offline ? 'Eliminado (se sincronizará) ✓' : 'Hito eliminado ✓');
   cerrarModal();
-  cargarHitos();
+  renderVistaHitos();
 }
 
 // ── Exportar Excel ──

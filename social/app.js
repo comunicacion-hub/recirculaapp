@@ -590,6 +590,45 @@ document.addEventListener('click', function (e) {
   closeFilterDrawer();
 });
 
+// ── Helpers del filtro tipo buscador (searchselect) ──
+function _filterNorm(s) {
+  return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+function _searchSelOpts(sec) {
+  return (sec.options || []).map(function (o) {
+    return (typeof o === 'object') ? { val: o.val, lbl: o.lbl } : { val: o, lbl: o };
+  });
+}
+// Chips a mostrar: sin texto → solo los seleccionados; con texto → coincidencias
+// (más los seleccionados, para poder desmarcarlos), limitadas.
+function _renderSearchSelChips(sec, query) {
+  const opts = _searchSelOpts(sec);
+  const cur = pendingFilters[sec.key];
+  const sel = Array.isArray(cur) ? cur : (cur ? [cur] : []);
+  const q = _filterNorm(query);
+  let list;
+  if (!q) {
+    list = opts.filter(function (o) { return sel.indexOf(o.val) !== -1; });
+    if (!list.length) return '<div class="filter-empty">Escribí para buscar una asociación…</div>';
+  } else {
+    const match = opts.filter(function (o) { return _filterNorm(o.lbl).indexOf(q) !== -1; });
+    const selFuera = opts.filter(function (o) { return sel.indexOf(o.val) !== -1 && match.indexOf(o) === -1; });
+    list = selFuera.concat(match).slice(0, 24);
+    if (!list.length) return '<div class="filter-empty">Sin resultados</div>';
+  }
+  return list.map(function (o) {
+    const on = sel.indexOf(o.val) !== -1 ? ' on' : '';
+    return '<button type="button" class="filter-chip' + on + '" data-val="' + esc(o.val) + '"' +
+      ' onclick="toggleFilterChip(\'' + jsEsc(sec.key) + '\',\'' + jsEsc(o.val) + '\', this)">' + esc(o.lbl) + '</button>';
+  }).join('');
+}
+function _filterSearchSel(key, query) {
+  const cfg = FILTER_CONFIGS[currentFilterScope]; if (!cfg) return;
+  const sec = cfg.sections.find(function (s) { return s.key === key; });
+  const cont = document.getElementById('filter-selres-' + key);
+  if (sec && cont) cont.innerHTML = _renderSearchSelChips(sec, query);
+}
+
 function renderFilterSection(sec) {
   const current = pendingFilters[sec.key];
   const arr = Array.isArray(current) ? current : (current ? [current] : []);
@@ -613,6 +652,19 @@ function renderFilterSection(sec) {
         ' onclick="toggleFilterRadioChip(\'' + jsEsc(sec.key) + '\',\'' + jsEsc(val) + '\', this)">' + esc(lbl) + '</button>';
     }).join('') + '</div>';
   }
+  // 'searchselect' → buscador que muestra solo las coincidencias como chips
+  // (no vuelca la lista completa). Guarda ids seleccionados como cualquier chip.
+  if (sec.type === 'searchselect') {
+    return '<div class="filter-searchsel">' +
+      '<div class="filter-search-box">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+        '<input type="text" class="filter-search" placeholder="' + esc(sec.placeholder || 'Buscar…') + '"' +
+        ' oninput="_filterSearchSel(\'' + jsEsc(sec.key) + '\', this.value)">' +
+      '</div>' +
+      '<div class="filter-chips filter-selres" id="filter-selres-' + sec.key + '">' + _renderSearchSelChips(sec, '') + '</div>' +
+    '</div>';
+  }
+
   // 'options' → chips multi-select; sin ninguno activo = todos.
   const opts = sec.options || [];
   if (!opts.length) return '<div class="filter-empty">Sin opciones disponibles</div>';

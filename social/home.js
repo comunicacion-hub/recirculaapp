@@ -365,7 +365,7 @@ const HOME = (() => {
       badgeId: 'home-filter-badge',
       sections: [
         { key: 'prov', title: 'Provincia',  type: 'options', options: _provincias() },
-        { key: 'asoc', title: 'Asociación', type: 'options', options: _asociaciones() },
+        { key: 'asoc', title: 'Asociación', type: 'searchselect', placeholder: 'Buscar asociación…', options: _asociaciones() },
       ],
       getValue: function (k) { return k === 'prov' ? _fProvs : _fAsocs; },
       setValue: function (k, v) { if (k === 'prov') _fProvs = v; else _fAsocs = v; },

@@ -16,7 +16,7 @@ function registerFinancieroFilters() {
     badgeId: 'fin-filter-badge',
     sections: [
       { key: 'prov', title: 'Provincia',  type: 'options', options: _provinciasFin() },
-      { key: 'asoc', title: 'Asociación', type: 'options', options: CAT.asocAmbiente.map(function (a) { return { val: a.id_asociacion, lbl: a.nombre }; }) },
+      { key: 'asoc', title: 'Asociación', type: 'searchselect', placeholder: 'Buscar asociación…', options: CAT.asocAmbiente.map(function (a) { return { val: a.id_asociacion, lbl: a.nombre }; }) },
     ],
     getValue: function (k) { return FIN_FILTROS[k] || []; },
     setValue: function (k, v) { FIN_FILTROS[k] = v; },
