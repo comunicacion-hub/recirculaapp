@@ -564,7 +564,7 @@ async function exportarAlianzasExcel() {
 
     /* Tarjetas-resumen */
     .ali-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
-    .ali-stat { display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:15px 16px; }
+    .ali-stat { display:flex; align-items:center; gap:12px; background:var(--white); border:1px solid var(--border); border-radius:16px; padding:15px 16px; }
     .ali-stat-ico { width:44px; height:44px; border-radius:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
     .ali-stat-ico svg { width:22px; height:22px; }
     .ali-stat-txt { display:flex; flex-direction:column; min-width:0; }

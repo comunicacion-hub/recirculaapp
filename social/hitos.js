@@ -73,8 +73,10 @@ function _valsCheckedHit(sel) {
 }
 function _provinciasHit() {
   const set = new Set();
+  // Unión: provincias ya usadas en hitos + todas las del catálogo de asociaciones,
+  // así la ficha siempre permite elegir cualquier provincia (no solo las ya usadas).
   CAT.hitos.forEach(function (h) { (h.provincias || []).forEach(function (p) { if (p) set.add(p); }); });
-  if (!set.size) CAT.asocAmbiente.forEach(function (a) { if (a.provincia) set.add(a.provincia); });
+  CAT.asocAmbiente.forEach(function (a) { if (a.provincia) set.add(a.provincia); });
   return Array.from(set).sort();
 }
 function _aniosHit() {
@@ -660,11 +662,9 @@ async function exportarHitosExcel() {
     .hito-tl-row { display:flex; gap:16px; align-items:stretch; }
     .hito-tl-row + .hito-tl-row { margin-top:16px; }
     .hito-tl-side { position:relative; width:58px; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:8px; padding-top:20px; }
-    .hito-tl-side::before { content:''; position:absolute; top:54px; left:50%; transform:translateX(-50%); width:2px; height:calc(100% + 16px - 34px); background:linear-gradient(#c7cbef,#c7cbef); }
-    .hito-tl-row:last-child .hito-tl-side::before { display:none; }
     .hito-tl-dot { position:relative; z-index:1; width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#7B5CFF,#506CFF); color:#fff; font-size:14px; font-weight:800; display:flex; align-items:center; justify-content:center; }
     .hito-tl-fecha { font-size:11px; font-weight:700; color:var(--text-muted); text-align:center; line-height:1.25; }
-    .hito-tl-card { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:16px 18px; display:flex; align-items:center; gap:18px; cursor:pointer; transition:box-shadow .15s,transform .12s,border-color .15s; }
+    .hito-tl-card { flex:1; background:var(--white); border:1px solid var(--border); border-radius:18px; padding:16px 18px; display:flex; align-items:center; gap:18px; cursor:pointer; transition:box-shadow .15s,transform .12s,border-color .15s; }
     .hito-tl-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.08); transform:translateY(-2px); border-color:transparent; }
     .hito-c-main { display:flex; align-items:center; gap:14px; flex:1; min-width:0; }
     .hito-c-id { min-width:0; }
@@ -673,7 +673,7 @@ async function exportarHitosExcel() {
 
     /* ── Tarjetas (móvil) ── */
     .hito-mob { display:none; flex-direction:column; gap:12px; }
-    .hito-card { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:16px; cursor:pointer; transition:box-shadow .15s,transform .12s,border-color .15s; }
+    .hito-card { background:var(--white); border:1px solid var(--border); border-radius:18px; padding:16px; cursor:pointer; transition:box-shadow .15s,transform .12s,border-color .15s; }
     .hito-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.08); transform:translateY(-2px); border-color:transparent; }
     .hito-card-top { display:flex; align-items:flex-start; gap:12px; }
     .hito-card-top .hito-id { flex:1; min-width:0; }
